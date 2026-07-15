@@ -60,7 +60,7 @@ def data_health(rows: Iterable[dict], source: str = "memory") -> DataHealth:
     row_list = list(rows)
     issues = _validation_issues(row_list)
     timestamps = sorted(str(row["timestamp"]) for row in row_list if "timestamp" in row)
-    columns = sorted({column for row in row_list for column in row.keys()})
+    columns = sorted({column for row in row_list for column in row.keys() if not column.startswith("_")})
     return DataHealth(
         source=source,
         row_count=len(row_list),

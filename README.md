@@ -18,10 +18,33 @@ Open `http://127.0.0.1:8787`.
 python3 -m unittest discover -s tests
 ```
 
+## Import Data
+
+Create a validated demo CSV:
+
+```bash
+python3 scripts/import_dataset.py --make-demo --output data/processed/current-meter.csv
+```
+
+Import a local CSV:
+
+```bash
+python3 scripts/import_dataset.py data/raw/my-building.csv --output data/processed/current-meter.csv
+```
+
+See [docs/data-import.md](docs/data-import.md) for the required schema.
+
+## Project Map
+
+See [docs/roadmap.md](docs/roadmap.md) for the current system diagram, build phases, and decision log.
+
+See [docs/system-design.md](docs/system-design.md) for component design, data flow, API design, storage, cache, streaming, and MLOps architecture.
+
 ## MVP Architecture
 
 - `src/energytwin/data.py`: deterministic demo data and scenario generation.
 - `src/energytwin/ingestion.py`: local CSV ingestion, schema checks, and data-health validation.
+- `src/energytwin/sources.py`: data-source selection between demo data and imported CSV.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.
 - `src/energytwin/simulator.py`: battery, grid import/export, cost, carbon, and comfort simulation.
 - `src/energytwin/optimizer.py`: baseline, rule, and optimized controller schedules.

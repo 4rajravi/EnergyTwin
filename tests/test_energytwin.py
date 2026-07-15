@@ -13,6 +13,7 @@ from energytwin.domain import BatterySpec
 from energytwin.forecasting import build_forecast
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
 from energytwin.simulator import simulate
+from energytwin.sources import load_history
 
 
 class EnergyTwinTests(unittest.TestCase):
@@ -59,6 +60,11 @@ class EnergyTwinTests(unittest.TestCase):
             self.assertEqual(data_health(rows, source=str(target)).invalid_rows, 0)
         finally:
             target.unlink(missing_ok=True)
+
+    def test_unknown_data_source_falls_back_to_demo(self) -> None:
+        rows, source = load_history(source_key="unknown", scenario_key="normal")
+        self.assertEqual(len(rows), 168)
+        self.assertEqual(source, "demo:normal")
 
 
 if __name__ == "__main__":

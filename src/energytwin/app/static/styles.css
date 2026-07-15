@@ -72,6 +72,10 @@ h2 {
   min-width: 220px;
 }
 
+.control-stack {
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+}
+
 label,
 .section-head span {
   color: var(--muted);
@@ -88,6 +92,7 @@ button {
 }
 
 select {
+  width: 100%;
   min-height: 42px;
   padding: 0 12px;
 }
@@ -279,6 +284,10 @@ svg {
   .section-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .control-stack {
+    grid-template-columns: 1fr;
   }
 
   .metric-grid,

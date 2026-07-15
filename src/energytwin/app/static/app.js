@@ -1,5 +1,6 @@
 const state = {
   scenario: "normal",
+  source: "demo",
   forecast: [],
   optimized: null,
   comparison: null,
@@ -57,13 +58,26 @@ async function loadScenarios() {
   });
 }
 
+async function loadSources() {
+  const data = await getJson("/api/data-sources");
+  const select = $("#source");
+  select.innerHTML = data.sources
+    .map((item) => `<option value="${item.key}" ${item.available ? "" : "disabled"}>${item.label}${item.available ? "" : " (not imported)"}</option>`)
+    .join("");
+  select.value = state.source;
+  select.addEventListener("change", async () => {
+    state.source = select.value;
+    await refresh();
+  });
+}
+
 async function refresh() {
   const [forecastData, optimizedData, comparisonData, modelData, dataHealth] = await Promise.all([
-    getJson(`/api/forecast?scenario=${state.scenario}`),
-    getJson(`/api/simulate?scenario=${state.scenario}&controller=optimized`),
-    getJson(`/api/optimize?scenario=${state.scenario}`),
+    getJson(`/api/forecast?scenario=${state.scenario}&source=${state.source}`),
+    getJson(`/api/simulate?scenario=${state.scenario}&source=${state.source}&controller=optimized`),
+    getJson(`/api/optimize?scenario=${state.scenario}&source=${state.source}`),
     getJson("/api/model-status"),
-    getJson(`/api/data-health?scenario=${state.scenario}`),
+    getJson(`/api/data-health?scenario=${state.scenario}&source=${state.source}`),
   ]);
   state.forecast = forecastData.forecast;
   state.optimized = optimizedData;
@@ -256,6 +270,7 @@ function label(svg, text, x, y, className) {
 
 window.addEventListener("DOMContentLoaded", async () => {
   setTabs();
+  await loadSources();
   await loadScenarios();
   await refresh();
 });

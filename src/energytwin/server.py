@@ -7,11 +7,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .data import available_scenarios, generate_history, get_scenario
+from .data import available_scenarios, get_scenario
 from .domain import serialize
 from .forecasting import build_forecast, model_status
-from .ingestion import data_health
 from .simulator import compare_policies, simulate
+from .sources import available_data_sources, current_data_health, load_history
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "static"
@@ -42,11 +42,14 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
     def _handle_api(self, path: str, query: dict[str, list[str]]) -> None:
         scenario_key = query.get("scenario", ["normal"])[0]
         controller = query.get("controller", ["baseline"])[0]
-        history = generate_history(scenario_key=scenario_key)
+        source_key = query.get("source", ["demo"])[0]
+        history, source_label = load_history(source_key=source_key, scenario_key=scenario_key)
         forecast = build_forecast(history, scenario_key=scenario_key)
 
         if path == "/api/scenarios":
             payload = {"scenarios": available_scenarios()}
+        elif path == "/api/data-sources":
+            payload = {"sources": serialize(available_data_sources())}
         elif path == "/api/forecast":
             payload = {
                 "profile": {
@@ -55,6 +58,7 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
                     "floor_area_m2": 18400,
                 },
                 "scenario": serialize(get_scenario(scenario_key)),
+                "source": source_label,
                 "forecast": serialize(forecast),
             }
         elif path == "/api/simulate":
@@ -73,7 +77,7 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         elif path == "/api/model-status":
             payload = model_status(len(history))
         elif path == "/api/data-health":
-            payload = serialize(data_health(history, source=f"demo:{scenario_key}"))
+            payload = serialize(current_data_health(source_key=source_key, scenario_key=scenario_key))
         else:
             self._json({"error": "not found"}, status=404)
             return
