@@ -73,7 +73,7 @@ h2 {
 }
 
 .control-stack {
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
 }
 
 label,

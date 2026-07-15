@@ -18,8 +18,9 @@ from energytwin.storage import LOCAL_DB_PATH  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the local Energy Twin MLOps pipeline on a schedule.")
-    parser.add_argument("--source", default="demo", choices=("demo", "imported"))
+    parser.add_argument("--source", default="demo", choices=("demo", "imported", "genome"))
     parser.add_argument("--scenario", default="normal")
+    parser.add_argument("--building", help="Building Data Genome building id when --source genome.")
     parser.add_argument("--model", default=MODEL_TRAINED_REGRESSION)
     parser.add_argument("--demand-charge", type=float, default=3.2)
     parser.add_argument("--export-credit", type=float, default=0.32)
@@ -38,6 +39,7 @@ def main() -> int:
         run_config=LocalRunConfig(
             source_key=args.source,
             scenario_key=args.scenario,
+            building_id=args.building,
             model_name=args.model,
             demand_charge_usd_per_kw_day=args.demand_charge,
             export_credit_fraction=args.export_credit,

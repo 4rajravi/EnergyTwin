@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .data import get_scenario
+from .drift_reports import write_drift_report
 from .domain import BatterySpec, TariffSpec, serialize
 from .forecasting import MODEL_TRAINED_MLP, MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline
 from .ingestion import data_health
@@ -18,6 +19,7 @@ from .model_artifacts import (
     save_forecast_model,
     train_forecast_model_artifact,
 )
+from .mlflow_registry import log_mlflow_run
 from .simulator import compare_policies
 from .sources import PROJECT_ROOT, load_history
 from .storage import LOCAL_DB_PATH, latest_run_report, list_run_reports, list_run_summaries, save_run_report
@@ -30,6 +32,7 @@ LOCAL_RUNS_DIR = PROJECT_ROOT / "mlruns" / "local"
 class LocalRunConfig:
     source_key: str = "demo"
     scenario_key: str = "normal"
+    building_id: str | None = None
     model_name: str = MODEL_WEIGHTED
     demand_charge_usd_per_kw_day: float = 3.2
     export_credit_fraction: float = 0.32
@@ -47,7 +50,12 @@ def run_local_experiment(
     db_path: Path | str | None = LOCAL_DB_PATH,
 ) -> dict:
     scenario = get_scenario(config.scenario_key)
-    history, source_label = load_history(source_key=config.source_key, scenario_key=config.scenario_key, scenario=scenario)
+    history, source_label = load_history(
+        source_key=config.source_key,
+        scenario_key=config.scenario_key,
+        scenario=scenario,
+        building_id=config.building_id,
+    )
     trained_artifact = None
     candidate_model_path = None
     active_model_path = None
@@ -123,6 +131,8 @@ def run_local_experiment(
             "promotion": promotion,
         },
     }
+    report["drift_report"] = write_drift_report(history)
+    report["mlflow"] = log_mlflow_run(report)
     write_local_run(report, output_dir=output_dir, db_path=db_path)
     return report
 

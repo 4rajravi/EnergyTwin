@@ -1,0 +1,12 @@
+.git
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/raw/
+data/processed/
+data/local/
+mlruns/
+models/
+logs/

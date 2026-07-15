@@ -16,6 +16,8 @@ CACHEABLE_API_PATHS = {
     "/api/model-status",
     "/api/forecast-evaluation",
     "/api/data-health",
+    "/api/district-forecast",
+    "/api/district-optimize",
 }
 
 

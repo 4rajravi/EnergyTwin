@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: energytwin
+      POSTGRES_USER: energytwin
+      POSTGRES_PASSWORD: energytwin
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      ENERGYTWIN_DATABASE_URL: postgresql://energytwin:energytwin@postgres:5432/energytwin
+      ENERGYTWIN_REDIS_URL: redis://redis:6379/0
+      ENERGYTWIN_REDIS_TTL_SECONDS: "60"
+      ENERGYTWIN_AUTH_TOKEN: change-me
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data
+      - ./mlruns:/app/mlruns
+      - ./models:/app/models
+
+volumes:
+  postgres-data:

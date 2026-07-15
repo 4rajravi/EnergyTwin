@@ -65,10 +65,11 @@ flowchart TD
 | 3. Weather and solar enrichment | NASA POWER adapter ready | Add weather/solar/price/carbon columns by timestamp |
 | 4. Forecasting upgrade | Regression + local MLP ready | DL model must beat promoted regression benchmark |
 | 5. Simulator and optimizer upgrade | Configurable economics ready | More realistic battery, tariff, comfort, HVAC behavior |
-| 6. MLOps pipeline | Local monitoring ready | MLflow, richer drift monitoring |
+| 6. MLOps pipeline | MLflow/Prefect/drift hooks ready | Optional registry, orchestration, and drift reports |
 | 7. Database and cache | Postgres + Redis adapters ready | Opt-in production run storage and API response caching |
 | 8. Streaming | Deferred | Kafka/Flink only if live telemetry needs it |
 | 9. RL-ready environment | Deferred | Gymnasium-style interface for future TD-MPC2 |
+| 10. Auth/deployment | Docker + token auth ready | Bearer-token API auth and Docker run path |
 
 ## Decision Log
 
@@ -95,21 +96,26 @@ flowchart TD
 | Daily monitoring | none, dashboard summary, Evidently | dashboard summary | Daily runs need trend visibility, not heavy monitoring infrastructure yet |
 | Daily automation | manual, launchd, cron, Prefect | launchd generator | macOS can run one local pipeline per day without a long-running loop |
 | First DL model | no DL, dependency-free MLP, PyTorch TFT | dependency-free MLP | Teaches real backprop training before adding heavy model infrastructure |
+| Multi-building | one imported building, dynamic Genome selector, separate app | dynamic Genome selector | Uses the downloaded public dataset without changing forecast/sim contracts |
+| MLflow | none, local JSON only, MLflow registry | optional MLflow | Logs runs/artifacts when tracking URI is configured |
+| Orchestration | local scheduler, launchd, Prefect | local plus optional Prefect | Prefect wraps the same pipeline instead of replacing it |
+| Drift | none, simple trend, Evidently | dependency-free drift report | Gives drift signal now and leaves room for native Evidently reports |
+| Auth/deploy | local only, token auth, full OAuth | token auth + Docker | Enough for private deployment without user accounts |
 
 ## Next Step
 
-Recommended next step: choose whether to add deep-learning dependencies or import more realistic public data.
+Recommended next step: harden the production integrations.
 
 That means:
 
-1. Add N-HiTS/PatchTST training, or
-2. Import and enrich a real public building dataset, or
-3. Move the local scheduler into Prefect.
+1. Replace the dependency-free drift JSON with native Evidently HTML/JSON reports.
+2. Add normalized Postgres tables for meter readings, forecasts, simulations, and optimization schedules.
+3. Add stronger deployment auth if this becomes more than a private demo.
 
 Options:
 
-- **Deep-learning model**: tests whether DL beats the promoted regression artifact.
-- **Real public data**: gives the models something less synthetic to learn.
-- **Prefect scheduler**: adds retries, logs, and pipeline history.
+- **Native Evidently**: richer drift diagnostics and shareable reports.
+- **Normalized DB tables**: query historical forecasts/simulations without reading JSON payloads.
+- **Stronger auth**: needed for user accounts, roles, or public deployment.
 
-My recommendation: import and enrich a real public dataset next, then add DL once the data is less synthetic.
+My recommendation: add normalized forecast/simulation tables next, because they make the dashboard, MLOps, and reporting more useful.

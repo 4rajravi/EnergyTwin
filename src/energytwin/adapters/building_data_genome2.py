@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from ..sources import PROCESSED_CURRENT, PROJECT_ROOT
 
 
 BDG2_ROOT = PROJECT_ROOT / "data" / "raw" / "buildingdatagenomeproject2"
+BDG2_PROCESSED_ROOT = PROJECT_ROOT / "data" / "processed" / "buildings"
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,64 @@ def prepare_building_data_genome2(config: BuildingDataGenome2Config) -> dict[str
         "solar_rows": len(solar),
         "nasa_rows": len(nasa),
     }
+
+
+def building_data_genome2_available(root_path: Path | str = BDG2_ROOT) -> bool:
+    root = Path(root_path)
+    return all((root / name).exists() for name in ("electricity_cleaned.csv", "metadata.csv", "weather.csv"))
+
+
+def list_building_data_genome2_buildings(root_path: Path | str = BDG2_ROOT, limit: int = 500) -> list[dict[str, Any]]:
+    root = Path(root_path)
+    if not building_data_genome2_available(root):
+        return []
+    with (root / "electricity_cleaned.csv").open(newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        electricity_columns = set(next(reader)[1:])
+
+    buildings: list[dict[str, Any]] = []
+    with (root / "metadata.csv").open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            building_id = row.get("building_id", "")
+            if building_id not in electricity_columns:
+                continue
+            buildings.append(
+                {
+                    "building_id": building_id,
+                    "site_id": row.get("site_id", ""),
+                    "primaryspaceusage": row.get("primaryspaceusage", ""),
+                    "sqm": _optional_float(row.get("sqm")),
+                    "lat": _optional_float(row.get("lat")),
+                    "lng": _optional_float(row.get("lng")),
+                    "has_solar": row.get("solar") == "Yes",
+                }
+            )
+
+    buildings.sort(key=lambda item: (item["site_id"], item["primaryspaceusage"], item["building_id"]))
+    return buildings[: max(1, min(limit, 2000))]
+
+
+def prepared_building_path(building_id: str, output_dir: Path | str = BDG2_PROCESSED_ROOT) -> Path:
+    return Path(output_dir) / f"{_safe_building_id(building_id)}.csv"
+
+
+def ensure_building_data_genome2_csv(
+    building_id: str,
+    root_path: Path | str = BDG2_ROOT,
+    output_dir: Path | str = BDG2_PROCESSED_ROOT,
+) -> Path:
+    target = prepared_building_path(building_id, output_dir=output_dir)
+    if target.exists():
+        return target
+    prepare_building_data_genome2(
+        BuildingDataGenome2Config(
+            root_path=root_path,
+            building_id=building_id,
+            output_path=target,
+        )
+    )
+    return target
 
 
 def metadata_for_building(metadata_path: Path | str, building_id: str) -> dict[str, str]:
@@ -191,3 +251,16 @@ def _parse_timestamp(value: str | None, source: Path, line_number: int) -> datet
     if not value:
         raise ValueError(f"{source} row {line_number}: missing timestamp")
     return datetime.fromisoformat(value)
+
+
+def _safe_building_id(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
+
+
+def _optional_float(value: str | None) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None

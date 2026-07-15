@@ -128,6 +128,9 @@ sequenceDiagram
 | Local storage | `src/energytwin/storage.py` | stores local experiment history in SQLite |
 | Production storage | `src/energytwin/production_db.py` | stores run history in Postgres/Timescale-compatible schema |
 | Cache | `src/energytwin/cache.py` | optional Redis cache for expensive API responses |
+| MLflow registry | `src/energytwin/mlflow_registry.py` | optional experiment and model artifact logging |
+| Drift reports | `src/energytwin/drift_reports.py` | optional drift report generation |
+| Auth | `src/energytwin/auth.py` | optional bearer-token API authentication |
 | Model artifacts | `src/energytwin/model_artifacts.py` | trains, saves, and loads local forecast model artifacts |
 | Forecasting | `src/energytwin/forecasting.py` | returns a 24-hour forecast contract |
 | Simulator | `src/energytwin/simulator.py` | simulates grid import/export, battery, cost, carbon, comfort |
@@ -159,6 +162,9 @@ Current API endpoints:
 | endpoint | purpose |
 | --- | --- |
 | `/api/data-sources` | list available data sources |
+| `/api/buildings` | list Building Data Genome buildings |
+| `/api/district-forecast` | aggregate selected Genome building forecasts |
+| `/api/district-optimize` | compare controllers for selected building group |
 | `/api/data-health` | show row count, valid rows, invalid rows, columns, date range |
 | `/api/scenarios` | list scenario options |
 | `/api/forecast` | return 24-hour demand/solar forecast |

@@ -53,6 +53,7 @@ See [docs/weather-enrichment.md](docs/weather-enrichment.md) for joining weather
 See [docs/nasa-power.md](docs/nasa-power.md) for NASA POWER weather enrichment.
 See [docs/mlops-local.md](docs/mlops-local.md) for local experiment reports.
 See [docs/production-infra.md](docs/production-infra.md) for Postgres/TimescaleDB and Redis setup.
+See [docs/advanced-ops.md](docs/advanced-ops.md) for multi-building, MLflow, Prefect, drift reports, auth, and Docker deployment.
 
 Run a scheduled local MLOps loop:
 
@@ -100,6 +101,9 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/storage.py`: SQLite persistence for local experiment history.
 - `src/energytwin/production_db.py`: optional Postgres-backed run history.
 - `src/energytwin/cache.py`: optional Redis API response cache.
+- `src/energytwin/mlflow_registry.py`: optional MLflow experiment/model registry logging.
+- `src/energytwin/drift_reports.py`: optional drift report generation.
+- `src/energytwin/auth.py`: optional bearer-token API authentication.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.
 - `/api/forecast-evaluation`: local backtest metrics for the active baseline.
 - `src/energytwin/simulator.py`: battery, grid import/export, tariff cost breakdown, carbon, and comfort simulation.

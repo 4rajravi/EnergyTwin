@@ -1,6 +1,8 @@
 const state = {
   scenario: "normal",
   source: "demo",
+  building: "Hog_office_Betsy",
+  buildings: [],
   forecast: [],
   optimized: null,
   comparison: null,
@@ -26,11 +28,37 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const svgNS = "http://www.w3.org/2000/svg";
+let authPromptActive = false;
 
 async function getJson(path) {
-  const response = await fetch(path);
+  let response = await fetch(path, authFetchOptions());
+  if (response.status === 401) {
+    const token = await requestAuthToken();
+    if (token) {
+      response = await fetch(path, authFetchOptions());
+    }
+  }
   if (!response.ok) throw new Error(`Request failed: ${path}`);
   return response.json();
+}
+
+async function requestAuthToken() {
+  if (authPromptActive) {
+    while (authPromptActive) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return window.localStorage.getItem("energytwinToken");
+  }
+  authPromptActive = true;
+  const token = window.prompt("EnergyTwin API token");
+  if (token) window.localStorage.setItem("energytwinToken", token);
+  authPromptActive = false;
+  return token;
+}
+
+function authFetchOptions() {
+  const token = window.localStorage.getItem("energytwinToken");
+  return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 }
 
 function money(value) {
@@ -84,8 +112,38 @@ async function loadSources() {
   select.value = state.source;
   select.addEventListener("change", async () => {
     state.source = select.value;
+    syncBuildingControl();
     await refresh();
   });
+}
+
+async function loadBuildings() {
+  const data = await getJson("/api/buildings?limit=500");
+  state.buildings = data.buildings || [];
+  const select = $("#building");
+  if (!state.buildings.length) {
+    select.innerHTML = `<option value="">No Genome buildings</option>`;
+    select.disabled = true;
+    return;
+  }
+  select.innerHTML = state.buildings
+    .map((item) => `<option value="${item.building_id}">${item.building_id} (${item.primaryspaceusage || item.site_id})</option>`)
+    .join("");
+  if (!state.buildings.some((item) => item.building_id === state.building)) {
+    state.building = state.buildings[0].building_id;
+  }
+  select.value = state.building;
+  select.addEventListener("change", async () => {
+    state.building = select.value;
+    await refresh();
+  });
+  syncBuildingControl();
+}
+
+function syncBuildingControl() {
+  const select = $("#building");
+  if (!select) return;
+  select.disabled = state.source !== "genome" || !state.buildings.length;
 }
 
 function setEconomicsControls() {
@@ -146,13 +204,14 @@ function syncScenarioControlsToPreset() {
 async function refresh() {
   const economics = economicsQuery();
   const scenario = scenarioQuery();
+  const base = baseQuery();
   const [forecastData, optimizedData, comparisonData, modelData, evaluationData, dataHealth, mlopsRun, mlopsRuns, mlopsMonitoring] = await Promise.all([
-    getJson(`/api/forecast?scenario=${state.scenario}&source=${state.source}&${scenario}`),
-    getJson(`/api/simulate?scenario=${state.scenario}&source=${state.source}&controller=optimized&${scenario}&${economics}`),
-    getJson(`/api/optimize?scenario=${state.scenario}&source=${state.source}&${scenario}&${economics}`),
-    getJson(`/api/model-status?source=${state.source}&scenario=${state.scenario}&${scenario}`),
-    getJson(`/api/forecast-evaluation?source=${state.source}&scenario=${state.scenario}&${scenario}`),
-    getJson(`/api/data-health?scenario=${state.scenario}&source=${state.source}&${scenario}`),
+    getJson(`/api/forecast?${base}&${scenario}`),
+    getJson(`/api/simulate?${base}&controller=optimized&${scenario}&${economics}`),
+    getJson(`/api/optimize?${base}&${scenario}&${economics}`),
+    getJson(`/api/model-status?${base}&${scenario}`),
+    getJson(`/api/forecast-evaluation?${base}&${scenario}`),
+    getJson(`/api/data-health?${base}&${scenario}`),
     getJson("/api/mlops-run"),
     getJson("/api/mlops-runs?limit=5"),
     getJson("/api/mlops-monitoring?limit=12"),
@@ -167,6 +226,17 @@ async function refresh() {
   state.mlopsRuns = mlopsRuns.runs || [];
   state.mlopsMonitoring = mlopsMonitoring;
   render();
+}
+
+function baseQuery() {
+  const params = new URLSearchParams({
+    scenario: state.scenario,
+    source: state.source,
+  });
+  if (state.source === "genome" && state.building) {
+    params.set("building", state.building);
+  }
+  return params.toString();
 }
 
 function scenarioQuery() {
@@ -240,9 +310,14 @@ function renderModelMetrics() {
   $("#modelMetrics").innerHTML = [
     metric("Active model", state.model.active_model, state.model.artifact && state.model.artifact.available ? "saved artifact" : "live baseline"),
     metric("Forecast error", number(state.evaluation.mae_kw, " kW"), `RMSE ${number(state.evaluation.rmse_kw, " kW")}`),
-    metric("Data source", state.source, `${state.dataHealth.valid_rows}/${state.dataHealth.row_count} valid rows`),
+    metric("Data source", state.source, `${activeBuildingLabel()} / ${state.dataHealth.valid_rows} rows`),
     metric("Latest run", latest ? shortRunId(latest.run_id) : "None", latest ? latest.created_at.replace("T", " ").slice(0, 19) : "Run local pipeline"),
   ].join("");
+}
+
+function activeBuildingLabel() {
+  if (state.source !== "genome") return state.dataHealth.source || state.source;
+  return state.building;
 }
 
 function renderMonitoringMetrics() {
@@ -518,6 +593,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   setScenarioControls();
   syncScenarioControlsToPreset();
   await loadSources();
+  await loadBuildings();
   await loadScenarios();
   await refresh();
 });

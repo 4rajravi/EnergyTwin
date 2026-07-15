@@ -15,11 +15,21 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from energytwin.data import generate_history, get_scenario
 from energytwin.adapters.building_data_genome import convert_bdg_long_csv, convert_bdg_wide_csv
-from energytwin.adapters.building_data_genome2 import BuildingDataGenome2Config, prepare_building_data_genome2
+from email.message import Message
+
+from energytwin.adapters.building_data_genome2 import (
+    BuildingDataGenome2Config,
+    ensure_building_data_genome2_csv,
+    list_building_data_genome2_buildings,
+    prepare_building_data_genome2,
+)
 from energytwin.adapters.nasa_power import NasaPowerRequest, build_nasa_power_url, nasa_power_json_to_enrichment_rows, write_enrichment_csv
+from energytwin.auth import request_authorized
 from energytwin.automation import LaunchdJobConfig, build_launchd_plist, write_launchd_plist
 from energytwin.cache import api_cache_key, cache_status
-from energytwin.domain import BatterySpec, TariffSpec
+from energytwin.district import aggregate_forecasts
+from energytwin.drift_reports import build_drift_report, render_drift_html
+from energytwin.domain import BatterySpec, ForecastPoint, TariffSpec
 from energytwin.downloads import DownloadConfig, download_public_dataset
 from energytwin.enrichment import enrich_rows_from_csv
 from energytwin.forecasting import (
@@ -88,6 +98,40 @@ class EnergyTwinTests(unittest.TestCase):
             backend = active_storage_backend()
             self.assertEqual(backend["backend"], "postgres")
             self.assertEqual(backend["target"], "postgresql://***@localhost:5432/energytwin")
+
+    def test_auth_token_accepts_bearer_or_query_token(self) -> None:
+        headers = Message()
+        with patch.dict(os.environ, {"ENERGYTWIN_AUTH_TOKEN": "secret"}, clear=True):
+            self.assertFalse(request_authorized(headers, {}))
+            headers["Authorization"] = "Bearer secret"
+            self.assertTrue(request_authorized(headers, {}))
+            headers.replace_header("Authorization", "Bearer wrong")
+            self.assertTrue(request_authorized(headers, {"token": ["secret"]}))
+
+    def test_auth_token_accepts_sha256_env(self) -> None:
+        headers = Message()
+        headers["Authorization"] = "Bearer secret"
+        digest = hashlib.sha256(b"secret").hexdigest()
+        with patch.dict(os.environ, {"ENERGYTWIN_AUTH_TOKEN_SHA256": digest}, clear=True):
+            self.assertTrue(request_authorized(headers, {}))
+
+    def test_drift_report_compares_reference_and_current_windows(self) -> None:
+        rows = generate_history(hours=96)
+        for row in rows[48:]:
+            row["demand_kw"] = float(row["demand_kw"]) * 1.5
+        report = build_drift_report(rows)
+        self.assertEqual(report["status"], "drifted")
+        self.assertGreater(report["fields"]["demand_kw"]["relative_mean_change"], 0.2)
+        self.assertIn("<table>", render_drift_html(report))
+
+    def test_district_aggregate_forecast_sums_building_loads(self) -> None:
+        point_a = ForecastPoint("2026-07-01T00:00:00", 0, 100, 90, 110, 10, 8, 12, 20, 0.2, 0.4, 0.2)
+        point_b = ForecastPoint("2026-07-01T00:00:00", 0, 50, 40, 60, 5, 4, 6, 22, 0.3, 0.5, 0.4)
+        aggregate = aggregate_forecasts([("a", [point_a]), ("b", [point_b])])
+        self.assertEqual(aggregate[0].demand_kw, 150)
+        self.assertEqual(aggregate[0].solar_kw, 15)
+        self.assertEqual(aggregate[0].outside_temp_c, 21)
+        self.assertEqual(aggregate[0].peak_risk, 0.4)
 
     def test_forecast_baseline_evaluation_reports_metrics(self) -> None:
         metrics = evaluate_forecast_baseline(generate_history())
@@ -439,7 +483,11 @@ class EnergyTwinTests(unittest.TestCase):
             summary = prepare_building_data_genome2(
                 BuildingDataGenome2Config(root_path=root, building_id="Hog_office_Betsy", output_path=output, nasa_enrichment_csv=nasa)
             )
+            buildings = list_building_data_genome2_buildings(root_path=root)
+            cached = ensure_building_data_genome2_csv("Hog_office_Betsy", root_path=root, output_dir=root / "prepared")
             rows = load_meter_csv(output)
+            self.assertEqual(buildings[0]["building_id"], "Hog_office_Betsy")
+            self.assertTrue(cached.exists())
             self.assertEqual(summary["row_count"], 2)
             self.assertEqual(rows[0]["demand_kw"], 100.0)
             self.assertEqual(rows[0]["outside_temp_c"], -6.0)
@@ -448,8 +496,11 @@ class EnergyTwinTests(unittest.TestCase):
         finally:
             output.unlink(missing_ok=True)
             if root.exists():
-                for path in root.glob("*"):
-                    path.unlink(missing_ok=True)
+                for path in sorted(root.rglob("*"), reverse=True):
+                    if path.is_dir():
+                        path.rmdir()
+                    else:
+                        path.unlink(missing_ok=True)
                 root.rmdir()
 
     def test_default_real_data_config_points_to_expected_local_files(self) -> None:

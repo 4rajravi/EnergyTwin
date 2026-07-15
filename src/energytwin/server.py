@@ -7,14 +7,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .auth import auth_status, request_authorized
 from .cache import api_cache_key, cache_get_json, cache_set_json, cache_status
 from .data import available_scenarios, get_scenario
+from .district import DEFAULT_DISTRICT_BUILDINGS, district_forecast, district_optimize
 from .domain import BatterySpec, TariffSpec, serialize
 from .forecasting import MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline, model_status
 from .mlops import list_local_runs, local_monitoring_summary, read_latest_local_run
 from .model_artifacts import forecast_model_summary
 from .simulator import compare_policies, simulate
-from .sources import available_data_sources, current_data_health, load_history
+from .sources import available_buildings, available_data_sources, current_data_health, load_history
 from .storage import active_storage_backend
 
 
@@ -27,7 +29,11 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/"):
-            self._handle_api(parsed.path, parse_qs(parsed.query))
+            query = parse_qs(parsed.query)
+            if not request_authorized(self.headers, query):
+                self._json({"error": "unauthorized"}, status=401)
+                return
+            self._handle_api(parsed.path, query)
             return
         self._serve_static(parsed.path)
 
@@ -53,9 +59,15 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         scenario_key = query.get("scenario", ["normal"])[0]
         controller = query.get("controller", ["baseline"])[0]
         source_key = query.get("source", ["demo"])[0]
+        building_id = query.get("building", [None])[0]
         battery, tariff = _economics_from_query(query)
         scenario = get_scenario(scenario_key, _scenario_overrides_from_query(query))
-        history, source_label = load_history(source_key=source_key, scenario_key=scenario_key, scenario=scenario)
+        history, source_label = load_history(
+            source_key=source_key,
+            scenario_key=scenario_key,
+            scenario=scenario,
+            building_id=building_id,
+        )
         model_name = query.get("model", [_default_model_name(len(history))])[0]
         forecast = build_forecast(history, scenario_key=scenario_key, scenario=scenario, model_name=model_name)
 
@@ -63,6 +75,8 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
             payload = {"scenarios": available_scenarios()}
         elif path == "/api/data-sources":
             payload = {"sources": serialize(available_data_sources())}
+        elif path == "/api/buildings":
+            payload = {"buildings": available_buildings(limit=_int_query(query, "limit", 500, 1, 2000))}
         elif path == "/api/forecast":
             payload = {
                 "profile": {
@@ -103,11 +117,35 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
             payload = {
                 "storage": active_storage_backend(),
                 "cache": cache_status(),
+                "auth": auth_status(),
             }
+        elif path == "/api/district-forecast":
+            payload = district_forecast(
+                building_ids=_building_list_query(query),
+                scenario_key=scenario_key,
+                scenario=scenario,
+                model_name=model_name,
+            )
+        elif path == "/api/district-optimize":
+            payload = district_optimize(
+                building_ids=_building_list_query(query),
+                scenario_key=scenario_key,
+                scenario=scenario,
+                model_name=model_name,
+                battery=battery,
+                tariff=tariff,
+            )
         elif path == "/api/forecast-evaluation":
             payload = serialize(evaluate_forecast_baseline(history, model_name=model_name))
         elif path == "/api/data-health":
-            payload = serialize(current_data_health(source_key=source_key, scenario_key=scenario_key, scenario=scenario))
+            payload = serialize(
+                current_data_health(
+                    source_key=source_key,
+                    scenario_key=scenario_key,
+                    scenario=scenario,
+                    building_id=building_id,
+                )
+            )
         else:
             self._json({"error": "not found"}, status=404)
             return
@@ -215,6 +253,16 @@ def _int_query(query: dict[str, list[str]], key: str, default: int, minimum: int
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _building_list_query(query: dict[str, list[str]]) -> list[str]:
+    raw_values = query.get("buildings", [])
+    if not raw_values:
+        return list(DEFAULT_DISTRICT_BUILDINGS)
+    buildings: list[str] = []
+    for raw in raw_values:
+        buildings.extend(item.strip() for item in raw.split(",") if item.strip())
+    return buildings[:20] if buildings else list(DEFAULT_DISTRICT_BUILDINGS)
 
 
 def _default_model_name(history_rows: int) -> str:
