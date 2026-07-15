@@ -9,6 +9,7 @@ const state = {
   dataHealth: null,
   mlopsRun: null,
   mlopsRuns: [],
+  mlopsMonitoring: null,
   economics: {
     demandCharge: 3.2,
     exportCredit: 0.32,
@@ -145,7 +146,7 @@ function syncScenarioControlsToPreset() {
 async function refresh() {
   const economics = economicsQuery();
   const scenario = scenarioQuery();
-  const [forecastData, optimizedData, comparisonData, modelData, evaluationData, dataHealth, mlopsRun, mlopsRuns] = await Promise.all([
+  const [forecastData, optimizedData, comparisonData, modelData, evaluationData, dataHealth, mlopsRun, mlopsRuns, mlopsMonitoring] = await Promise.all([
     getJson(`/api/forecast?scenario=${state.scenario}&source=${state.source}&${scenario}`),
     getJson(`/api/simulate?scenario=${state.scenario}&source=${state.source}&controller=optimized&${scenario}&${economics}`),
     getJson(`/api/optimize?scenario=${state.scenario}&source=${state.source}&${scenario}&${economics}`),
@@ -154,6 +155,7 @@ async function refresh() {
     getJson(`/api/data-health?scenario=${state.scenario}&source=${state.source}&${scenario}`),
     getJson("/api/mlops-run"),
     getJson("/api/mlops-runs?limit=5"),
+    getJson("/api/mlops-monitoring?limit=12"),
   ]);
   state.forecast = forecastData.forecast;
   state.optimized = optimizedData;
@@ -163,6 +165,7 @@ async function refresh() {
   state.dataHealth = dataHealth;
   state.mlopsRun = mlopsRun.error ? null : mlopsRun;
   state.mlopsRuns = mlopsRuns.runs || [];
+  state.mlopsMonitoring = mlopsMonitoring;
   render();
 }
 
@@ -221,7 +224,9 @@ function render() {
   ].join("");
 
   renderRunMetrics();
+  renderMonitoringMetrics();
   renderRunHistory();
+  drawMlopsTrend();
   drawForecast();
   drawLive();
   drawCostBreakdown();
@@ -247,6 +252,26 @@ function renderRunMetrics() {
   ].join("");
 }
 
+function renderMonitoringMetrics() {
+  const monitoring = state.mlopsMonitoring;
+  if (!monitoring || !monitoring.latest) {
+    $("#monitoringMetrics").innerHTML = [
+      metric("Trend", "None", "Need at least one run"),
+      metric("Best MAE", "-", "No run history"),
+      metric("Promotion", "-", "No candidates"),
+      metric("Latest decision", "-", "No candidate run"),
+    ].join("");
+    return;
+  }
+  const latestPromotion = monitoring.promotion.latest;
+  $("#monitoringMetrics").innerHTML = [
+    metric("Trend", monitoring.status, `${number(monitoring.mae_delta_kw, " kW")} from previous`),
+    metric("Best MAE", number(monitoring.best.mae_kw, " kW"), shortRunId(monitoring.best.run_id)),
+    metric("Promotion", `${monitoring.promotion.promoted}/${monitoring.promotion.candidate_runs}`, `${monitoring.promotion.rejected} rejected`),
+    metric("Latest decision", latestPromotion ? (latestPromotion.promoted ? "Promoted" : "Rejected") : "None", latestPromotion ? latestPromotion.reason : "No candidate run"),
+  ].join("");
+}
+
 function renderRunHistory() {
   const list = $("#runHistory");
   if (!state.mlopsRuns.length) {
@@ -259,6 +284,31 @@ function renderRunHistory() {
       <strong>${run.scenario_key} / ${number(run.mae_kw, " kW")}</strong>
     </li>`)
     .join("");
+}
+
+function drawMlopsTrend() {
+  const svg = $("#mlopsTrendChart");
+  if (!svg) return;
+  clear(svg);
+  const rows = (state.mlopsMonitoring && state.mlopsMonitoring.trend) || [];
+  if (!rows.length) {
+    label(svg, "No run history", 380, 170, "chart-label");
+    return;
+  }
+  const maxY = Math.max(...rows.map((run) => run.mae_kw)) * 1.12;
+  const minY = Math.min(0, Math.min(...rows.map((run) => run.mae_kw)) * 0.9);
+  const x = scale(0, Math.max(1, rows.length - 1), 54, 930);
+  const y = scale(minY, maxY, 278, 30);
+  drawGrid(svg, y, maxY);
+  drawLine(svg, rows.map((run, index) => [x(index), y(run.mae_kw)]), "line-demand");
+  rows.forEach((run, index) => {
+    const className = run.promoted ? "point-promoted" : "point-run";
+    circle(svg, x(index), y(run.mae_kw), 5, className);
+    if (index === 0 || index === rows.length - 1) {
+      label(svg, `${number(run.mae_kw, " kW")}`, x(index) - 18, y(run.mae_kw) - 12, "chart-label");
+    }
+  });
+  drawLegend(svg, [["MAE", 64, "var(--blue)"], ["Promoted", 126, "var(--green)"], ["Candidate/run", 220, "var(--amber)"]]);
 }
 
 function shortRunId(runId) {
@@ -431,6 +481,15 @@ function rect(svg, x, y, width, height, className) {
   element.setAttribute("width", width);
   element.setAttribute("height", height);
   element.setAttribute("rx", 4);
+  element.setAttribute("class", className);
+  svg.appendChild(element);
+}
+
+function circle(svg, x, y, radius, className) {
+  const element = document.createElementNS(svgNS, "circle");
+  element.setAttribute("cx", x);
+  element.setAttribute("cy", y);
+  element.setAttribute("r", radius);
   element.setAttribute("class", className);
   svg.appendChild(element);
 }

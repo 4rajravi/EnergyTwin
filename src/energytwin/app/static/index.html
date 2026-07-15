@@ -95,6 +95,14 @@
     <section id="mlops" class="panel">
       <div class="metric-grid" id="modelMetrics"></div>
       <div class="metric-grid" id="runMetrics"></div>
+      <div class="metric-grid" id="monitoringMetrics"></div>
+      <div class="chart-band">
+        <div class="section-head">
+          <h2>Forecast Error Trend</h2>
+          <span>Daily MLOps run history</span>
+        </div>
+        <svg id="mlopsTrendChart" viewBox="0 0 960 320" role="img" aria-label="Forecast error trend chart"></svg>
+      </div>
       <div class="ops-layout">
         <article>
           <h2>Pipeline</h2>
@@ -102,8 +110,8 @@
             <li><span>Ingest</span><strong>demo profile</strong></li>
             <li><span>Features</span><strong>calendar, weather, price, carbon</strong></li>
             <li><span>Train</span><strong>TFT target</strong></li>
-            <li><span>Register</span><strong>MLflow pending</strong></li>
-            <li><span>Monitor</span><strong>Evidently pending</strong></li>
+            <li><span>Promote</span><strong>local gate</strong></li>
+            <li><span>Monitor</span><strong>SQLite trend</strong></li>
           </ol>
         </article>
         <article>

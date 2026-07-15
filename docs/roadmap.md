@@ -63,9 +63,9 @@ flowchart TD
 | 1. Data import and validation | In progress | CSV import, schema validation, data-health UI |
 | 2. Real public meter data adapter | Adapter ready | Convert Building Data Genome-style meter data into our schema |
 | 3. Weather and solar enrichment | NASA POWER adapter ready | Add weather/solar/price/carbon columns by timestamp |
-| 4. Forecasting upgrade | Baseline metrics ready | Replace seasonal baseline with stronger models |
+| 4. Forecasting upgrade | Trainable artifact ready | Replace hourly artifact with stronger models |
 | 5. Simulator and optimizer upgrade | Configurable economics ready | More realistic battery, tariff, comfort, HVAC behavior |
-| 6. MLOps pipeline | Local scheduler ready | MLflow, retraining, drift monitoring |
+| 6. MLOps pipeline | Local monitoring ready | MLflow, richer drift monitoring |
 | 7. Database and cache | SQLite started | Postgres/TimescaleDB and Redis |
 | 8. Streaming | Deferred | Kafka/Flink only if live telemetry needs it |
 | 9. RL-ready environment | Deferred | Gymnasium-style interface for future TD-MPC2 |
@@ -75,7 +75,7 @@ flowchart TD
 | decision | options | current choice | why |
 | --- | --- | --- | --- |
 | First data layer | demo only, CSV, DuckDB, Postgres | CSV + validation | Teaches schema discipline without infrastructure overhead |
-| Forecast model now | simple baseline, TFT immediately | simple baseline contract | Lets UI/simulator stabilize before training complexity |
+| Forecast model now | coded baseline, local artifact, TFT immediately | local hourly artifact | Adds real train/save/load mechanics before deep learning |
 | Streaming now | none, Kafka, Kafka + Flink | none | No live telemetry yet |
 | Database now | files, SQLite, DuckDB, Postgres/TimescaleDB | SQLite for run history | Small persistence step without committing the whole app to a database yet |
 | Public meter data | downloader, adapter, manual CSV only | adapter | Supports real data shape without network or large files |
@@ -89,21 +89,23 @@ flowchart TD
 | MLOps first step | no tracking, local JSON, MLflow now | local JSON | Establishes run contract before adding MLflow/Prefect |
 | Run history | latest file only, SQLite, MLflow | SQLite | Lets dashboard/API compare recent local runs without new services |
 | Scheduler | manual command, cron, Prefect | project-owned scheduler script | Gives repeatable local automation before installing system cron or adding Prefect |
+| Retraining first step | no retraining, local artifact, MLflow registry | local artifact + promotion gate | Makes retraining concrete without a service dependency |
+| Daily monitoring | none, dashboard summary, Evidently | dashboard summary | Daily runs need trend visibility, not heavy monitoring infrastructure yet |
 
 ## Next Step
 
-Recommended next step: choose whether to improve the forecasting model or add retraining infrastructure.
+Recommended next step: choose whether to improve the forecasting model quality or make daily automation easier.
 
 That means:
 
 1. Add a stronger statistical forecasting baseline, or
-2. Add a trainable model artifact and promotion rule, or
+2. Add a macOS launchd or cron helper, or
 3. Move the local scheduler into Prefect.
 
 Options:
 
 - **Forecasting baseline**: teaches evaluation and makes the AI part more real.
-- **Trainable model artifact**: unlocks real retraining and promotion decisions.
+- **Daily automation helper**: starts the daily pipeline after login/reboot.
 - **Prefect scheduler**: adds retries, logs, and pipeline history.
 
-My recommendation: improve the forecasting baseline next, then add a trainable model artifact.
+My recommendation: replace the hourly artifact with a stronger forecasting model, then add a launchd/cron helper.

@@ -44,6 +44,16 @@ Run a scheduled local MLOps loop:
 python3 scripts/schedule_local_pipeline.py --source demo --scenario price --interval-minutes 60 --forever
 ```
 
+Train the local forecast artifact:
+
+```bash
+python3 scripts/train_forecast_model.py --source demo --scenario price
+```
+
+Training writes a candidate model first and promotes it to `models/active-forecast-model.json` only if it beats the weighted baseline by the configured metric threshold.
+
+The MLOps dashboard also shows recent run history, forecast error trend, best run, and candidate promotion counts from SQLite.
+
 ## Project Map
 
 See [docs/roadmap.md](docs/roadmap.md) for the current system diagram, build phases, and decision log.
@@ -58,6 +68,7 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/enrichment.py`: timestamp-based joins for weather, solar, price, and carbon data.
 - `src/energytwin/adapters/nasa_power.py`: NASA POWER hourly weather-to-enrichment adapter.
 - `src/energytwin/mlops.py`: local experiment report generation.
+- `src/energytwin/model_artifacts.py`: train/save/load support for local forecast artifacts.
 - `src/energytwin/scheduler.py`: interval-based local MLOps scheduler.
 - `src/energytwin/storage.py`: SQLite persistence for local experiment history.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.

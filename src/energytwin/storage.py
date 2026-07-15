@@ -132,3 +132,21 @@ def list_run_summaries(limit: int = 20, db_path: Path | str = LOCAL_DB_PATH) -> 
             (bounded_limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_run_reports(limit: int = 20, db_path: Path | str = LOCAL_DB_PATH) -> list[dict[str, Any]]:
+    path = Path(db_path)
+    if not path.exists():
+        return []
+    bounded_limit = max(1, min(int(limit), 100))
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            """
+            SELECT payload_json
+            FROM runs
+            ORDER BY created_at DESC, run_id DESC
+            LIMIT ?
+            """,
+            (bounded_limit,),
+        ).fetchall()
+    return [json.loads(row[0]) for row in rows]

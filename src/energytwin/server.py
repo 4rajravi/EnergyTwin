@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 from .data import available_scenarios, get_scenario
 from .domain import BatterySpec, TariffSpec, serialize
 from .forecasting import build_forecast, evaluate_forecast_baseline, model_status
-from .mlops import list_local_runs, read_latest_local_run
+from .mlops import list_local_runs, local_monitoring_summary, read_latest_local_run
 from .simulator import compare_policies, simulate
 from .sources import available_data_sources, current_data_health, load_history
 
@@ -88,6 +88,8 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
             payload = read_latest_local_run() or {"error": "no local run found"}
         elif path == "/api/mlops-runs":
             payload = {"runs": list_local_runs(limit=_int_query(query, "limit", 20, 1, 100))}
+        elif path == "/api/mlops-monitoring":
+            payload = local_monitoring_summary(limit=_int_query(query, "limit", 20, 1, 100))
         elif path == "/api/forecast-evaluation":
             payload = serialize(evaluate_forecast_baseline(history, model_name=model_name))
         elif path == "/api/data-health":

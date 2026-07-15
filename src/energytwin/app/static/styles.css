@@ -280,6 +280,18 @@ svg {
   fill: var(--amber);
 }
 
+.point-run {
+  fill: var(--amber);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.point-promoted {
+  fill: var(--green);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
 .chart-label {
   fill: var(--muted);
   font-size: 12px;

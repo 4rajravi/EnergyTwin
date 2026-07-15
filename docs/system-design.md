@@ -126,6 +126,7 @@ sequenceDiagram
 | Local MLOps | `src/energytwin/mlops.py` | writes dependency-free local experiment reports |
 | Local scheduler | `src/energytwin/scheduler.py` | repeats local MLOps runs on an interval |
 | Local storage | `src/energytwin/storage.py` | stores local experiment history in SQLite |
+| Model artifacts | `src/energytwin/model_artifacts.py` | trains, saves, and loads local forecast model artifacts |
 | Forecasting | `src/energytwin/forecasting.py` | returns a 24-hour forecast contract |
 | Simulator | `src/energytwin/simulator.py` | simulates grid import/export, battery, cost, carbon, comfort |
 | Optimizer | `src/energytwin/optimizer.py` | creates baseline, rule, and optimized schedules |
@@ -165,6 +166,7 @@ Current API endpoints:
 | `/api/model-status` | show model and MLOps state |
 | `/api/mlops-run` | return the latest local experiment report |
 | `/api/mlops-runs` | return recent local experiment summaries |
+| `/api/mlops-monitoring` | return forecast error trend and promotion summary |
 
 Current query parameters:
 
@@ -294,16 +296,27 @@ Current scheduled local flow:
 flowchart LR
     A[Local timer script] --> B[Load source data]
     B --> C[Validate data health]
-    C --> D[Forecast]
-    D --> E[Evaluate]
-    D --> F[Simulate and optimize]
-    E --> G[Write JSON report]
-    F --> G
-    G --> H[Write SQLite run history]
-    H --> I[Dashboard MLOps panel]
+    C --> D{Retrain?}
+    D -- "yes" --> E[Train candidate artifact]
+    D -- "no" --> F[Use active model]
+    E --> M{Better than reference?}
+    M -- "yes" --> N[Promote active artifact]
+    M -- "no" --> O[Keep candidate only]
+    N --> F
+    O --> F
+    F --> G[Forecast]
+    G --> H[Evaluate]
+    G --> I[Simulate and optimize]
+    H --> J[Write JSON report]
+    I --> J
+    J --> K[Write SQLite run history]
+    K --> L[Build monitoring summary]
+    L --> P[Dashboard MLOps panel]
 ```
 
-The scheduler does not retrain yet. It reruns prediction, evaluation, and optimization using the active forecasting contract.
+The scheduler can retrain the local `trained-hourly-v1` artifact with `--train-model`. Promotion compares the candidate against `weighted-baseline-v1`; the active artifact is overwritten only when the candidate clears the MAE improvement threshold.
+
+The monitoring summary is intentionally small: latest MAE, previous-vs-latest delta, best historical run, promotion counts, and a trend label. This is enough for daily local operation without adding Evidently yet.
 
 Training flow later:
 
@@ -324,6 +337,7 @@ flowchart TD
 Current model:
 
 - measured weighted baseline
+- trainable hourly artifact
 - 24-hour forecast
 - demand and solar outputs
 - uncertainty bands

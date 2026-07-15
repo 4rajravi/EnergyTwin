@@ -13,9 +13,10 @@ from energytwin.adapters.building_data_genome import convert_bdg_long_csv, conve
 from energytwin.adapters.nasa_power import NasaPowerRequest, build_nasa_power_url, nasa_power_json_to_enrichment_rows, write_enrichment_csv
 from energytwin.domain import BatterySpec, TariffSpec
 from energytwin.enrichment import enrich_rows_from_csv
-from energytwin.forecasting import build_forecast, evaluate_forecast_baseline
+from energytwin.forecasting import MODEL_TRAINED_HOURLY, build_forecast, evaluate_forecast_baseline
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
-from energytwin.mlops import LocalRunConfig, read_latest_local_run, run_local_experiment
+from energytwin.mlops import LocalRunConfig, local_monitoring_summary, read_latest_local_run, run_local_experiment
+from energytwin.model_artifacts import PromotionPolicy, decide_model_promotion, load_forecast_model, save_forecast_model, train_hourly_forecast_model
 from energytwin.scheduler import LocalScheduleConfig, run_local_schedule
 from energytwin.simulator import compare_policies, schedule_for, simulate
 from energytwin.sources import load_history
@@ -44,6 +45,37 @@ class EnergyTwinTests(unittest.TestCase):
         seasonal = build_forecast(history, model_name="seasonal")
         self.assertEqual(len(weighted), len(seasonal))
         self.assertTrue(all(point.demand_kw >= 0 for point in weighted))
+
+    def test_trained_hourly_model_artifact_preserves_forecast_contract(self) -> None:
+        history = generate_history()
+        target = ROOT / "models" / "test-forecast-model.json"
+        try:
+            artifact = train_hourly_forecast_model(history)
+            save_forecast_model(artifact, target)
+            loaded = load_forecast_model(target)
+            self.assertIsNotNone(loaded)
+            forecast = build_forecast(history, model_name=MODEL_TRAINED_HOURLY, model_artifact=loaded)
+            metrics = evaluate_forecast_baseline(history, model_name=MODEL_TRAINED_HOURLY)
+            self.assertEqual(len(forecast), 24)
+            self.assertEqual(loaded["training_rows"], len(history))
+            self.assertGreater(metrics.evaluated_points, 0)
+            self.assertGreater(metrics.mae_kw, 0)
+        finally:
+            target.unlink(missing_ok=True)
+
+    def test_model_promotion_requires_metric_improvement(self) -> None:
+        promoted = decide_model_promotion(
+            {"mae_kw": 90.0, "smape": 0.1},
+            {"mae_kw": 100.0, "smape": 0.1},
+            PromotionPolicy(min_improvement_pct=0.05),
+        )
+        rejected = decide_model_promotion(
+            {"mae_kw": 99.0, "smape": 0.1},
+            {"mae_kw": 100.0, "smape": 0.1},
+            PromotionPolicy(min_improvement_pct=0.05),
+        )
+        self.assertTrue(promoted["promoted"])
+        self.assertFalse(rejected["promoted"])
 
     def test_custom_scenario_overrides_affect_forecast(self) -> None:
         base = get_scenario("normal")
@@ -268,6 +300,35 @@ class EnergyTwinTests(unittest.TestCase):
                 path.unlink(missing_ok=True)
             output_dir.rmdir()
 
+    def test_local_mlops_run_can_train_model_artifact(self) -> None:
+        output_dir = ROOT / "mlruns" / "test-train-model"
+        db_path = ROOT / "data" / "processed" / "test-train-model-runs.sqlite3"
+        active_model = ROOT / "models" / "test-active-forecast-model.json"
+        candidate_model = ROOT / "models" / "test-candidate-forecast-model.json"
+        try:
+            report = run_local_experiment(
+                LocalRunConfig(
+                    scenario_key="normal",
+                    model_name=MODEL_TRAINED_HOURLY,
+                    train_model=True,
+                    active_model_path=str(active_model),
+                    candidate_model_path=str(candidate_model),
+                ),
+                output_dir=output_dir,
+                db_path=db_path,
+            )
+            self.assertEqual(report["model_candidate"]["artifact_training_rows"], 168)
+            self.assertTrue(candidate_model.exists())
+            self.assertEqual(active_model.exists(), report["model_candidate"]["promotion"]["promoted"])
+            self.assertEqual(load_forecast_model(candidate_model)["model_name"], MODEL_TRAINED_HOURLY)
+        finally:
+            active_model.unlink(missing_ok=True)
+            candidate_model.unlink(missing_ok=True)
+            db_path.unlink(missing_ok=True)
+            for path in output_dir.glob("*.json"):
+                path.unlink(missing_ok=True)
+            output_dir.rmdir()
+
     def test_storage_roundtrips_run_report(self) -> None:
         db_path = ROOT / "data" / "processed" / "test-storage-runs.sqlite3"
         report = run_local_experiment(
@@ -290,6 +351,36 @@ class EnergyTwinTests(unittest.TestCase):
             for path in output_dir.glob("*.json"):
                 path.unlink(missing_ok=True)
             output_dir.rmdir()
+
+    def test_monitoring_summary_reports_forecast_trend_and_promotion(self) -> None:
+        db_path = ROOT / "data" / "processed" / "test-monitoring-runs.sqlite3"
+        first = {
+            "run_id": "run-1",
+            "created_at": "2026-07-15T00:00:00+00:00",
+            "config": {"source_key": "demo", "scenario_key": "normal", "model_name": "weighted-baseline-v1"},
+            "forecast_metrics": {"model_name": "weighted-baseline-v1", "mae_kw": 50.0, "rmse_kw": 60.0, "smape": 0.12},
+            "policy_comparison": {"optimized": {"cost_savings_pct": 4.0, "carbon_reduction_pct": 2.0, "peak_reduction_pct": 1.0}},
+            "model_candidate": {},
+        }
+        second = {
+            "run_id": "run-2",
+            "created_at": "2026-07-16T00:00:00+00:00",
+            "config": {"source_key": "demo", "scenario_key": "normal", "model_name": "trained-hourly-v1"},
+            "forecast_metrics": {"model_name": "trained-hourly-v1", "mae_kw": 45.0, "rmse_kw": 55.0, "smape": 0.11},
+            "policy_comparison": {"optimized": {"cost_savings_pct": 5.0, "carbon_reduction_pct": 2.5, "peak_reduction_pct": 1.4}},
+            "model_candidate": {"promotion": {"promoted": True, "reason": "candidate improved mae_kw by 10.00%"}},
+        }
+        try:
+            save_run_report(first, db_path=db_path)
+            save_run_report(second, db_path=db_path)
+            monitoring = local_monitoring_summary(db_path=db_path)
+            self.assertEqual(monitoring["run_count"], 2)
+            self.assertEqual(monitoring["status"], "improving")
+            self.assertEqual(monitoring["latest"]["run_id"], "run-2")
+            self.assertEqual(monitoring["best"]["mae_kw"], 45.0)
+            self.assertEqual(monitoring["promotion"]["promoted"], 1)
+        finally:
+            db_path.unlink(missing_ok=True)
 
     def test_local_scheduler_runs_pipeline_multiple_times(self) -> None:
         output_dir = ROOT / "mlruns" / "test-scheduler"

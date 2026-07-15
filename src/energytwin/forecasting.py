@@ -5,10 +5,12 @@ from datetime import datetime, timedelta
 
 from .data import PROFILE, get_scenario, price, solar_shape, weather_temp
 from .domain import ForecastMetrics, ForecastPoint, Scenario
+from .model_artifacts import TRAINED_HOURLY_MODEL, forecast_model_summary, load_forecast_model, train_hourly_forecast_model
 
 
 MODEL_SEASONAL = "seasonal"
 MODEL_WEIGHTED = "weighted-baseline-v1"
+MODEL_TRAINED_HOURLY = TRAINED_HOURLY_MODEL
 
 
 def _hourly_average(history: list[dict], field: str, hour: int) -> float:
@@ -22,8 +24,11 @@ def build_forecast(
     horizon_hours: int = 24,
     scenario: Scenario | None = None,
     model_name: str = MODEL_WEIGHTED,
+    model_artifact: dict | None = None,
 ) -> list[ForecastPoint]:
     scenario = scenario or get_scenario(scenario_key)
+    if model_name == MODEL_TRAINED_HOURLY and model_artifact is None:
+        model_artifact = load_forecast_model() or train_hourly_forecast_model(history)
     last_ts = datetime.fromisoformat(str(history[-1]["timestamp"]))
     points: list[ForecastPoint] = []
 
@@ -32,11 +37,11 @@ def build_forecast(
         hour = ts.hour
         day_index = (len(history) + step) // 24
         temp = weather_temp(hour, day_index, scenario)
-        baseline = _predict_demand(history, hour, temp, model_name)
+        baseline = _predict_demand(history, hour, temp, model_name, model_artifact=model_artifact)
         cooling_delta = max(0.0, temp - 22.0) * 9.5
         ev = scenario.ev_spike_kw if 17 <= hour <= 20 else 0.0
         demand = max(PROFILE.base_kw, baseline + _scenario_demand_adjustment(model_name, cooling_delta) + ev)
-        solar = _predict_solar(history, hour, scenario.cloud_cover, model_name)
+        solar = _predict_solar(history, hour, scenario.cloud_cover, model_name, model_artifact=model_artifact)
         uncertainty = max(22.0, demand * (0.06 + 0.02 * scenario.comfort_strictness))
         solar_uncertainty = max(5.0, solar * (0.10 + scenario.cloud_cover * 0.2))
         risk = min(1.0, max(0.0, (demand - PROFILE.peak_kw * 0.72) / (PROFILE.peak_kw * 0.42)))
@@ -80,7 +85,8 @@ def evaluate_forecast_baseline(
     for index in range(min_train_hours, len(history)):
         train = history[:index]
         actual = float(history[index]["demand_kw"])
-        prediction = build_forecast(train, horizon_hours=1, model_name=model_name)[0]
+        artifact = train_hourly_forecast_model(train) if model_name == MODEL_TRAINED_HOURLY else None
+        prediction = build_forecast(train, horizon_hours=1, model_name=model_name, model_artifact=artifact)[0]
         error = prediction.demand_kw - actual
         errors.append(error)
         squared_errors.append(error * error)
@@ -125,7 +131,8 @@ def model_status(history_rows: int, metrics: ForecastMetrics | None = None) -> d
         "bias_kw": metrics.bias_kw,
         "coverage_p10_p90": metrics.coverage_p10_p90,
         "drift_status": "not-configured",
-        "registry": "pending-mlflow",
+        "registry": "local-json-artifact" if metrics.model_name == MODEL_TRAINED_HOURLY else "pending-mlflow",
+        "artifact": forecast_model_summary(),
     }
 
 
@@ -140,7 +147,21 @@ def _carbon_for(hour: int, scenario_key: str) -> float:
     return max(0.12, carbon)
 
 
-def _predict_demand(history: list[dict], hour: int, forecast_temp: float, model_name: str) -> float:
+def _predict_demand(
+    history: list[dict],
+    hour: int,
+    forecast_temp: float,
+    model_name: str,
+    model_artifact: dict | None = None,
+) -> float:
+    if model_name == MODEL_TRAINED_HOURLY and model_artifact is not None:
+        hourly = model_artifact.get("hourly", {}).get(str(hour), {})
+        global_stats = model_artifact.get("global", {})
+        seasonal = float(hourly.get("demand_kw", global_stats.get("demand_kw", PROFILE.base_kw)))
+        historical_temp = float(hourly.get("outside_temp_c", global_stats.get("outside_temp_c", forecast_temp)))
+        sensitivity = float(global_stats.get("temp_sensitivity_kw_per_c", 0.0))
+        return seasonal + sensitivity * (forecast_temp - historical_temp)
+
     seasonal = _hourly_average(history, "demand_kw", hour)
     if model_name == MODEL_SEASONAL:
         return seasonal
@@ -157,10 +178,20 @@ def _predict_demand(history: list[dict], hour: int, forecast_temp: float, model_
     return seasonal * 0.62 + recent_same_hour * 0.28 + (seasonal + level_adjustment) * 0.10 + weather_adjustment
 
 
-def _predict_solar(history: list[dict], hour: int, cloud_cover: float, model_name: str) -> float:
+def _predict_solar(
+    history: list[dict],
+    hour: int,
+    cloud_cover: float,
+    model_name: str,
+    model_artifact: dict | None = None,
+) -> float:
     scenario_solar = PROFILE.solar_kwp * solar_shape(hour) * (1 - cloud_cover * 0.82)
     if model_name == MODEL_SEASONAL:
         return scenario_solar
+    if model_name == MODEL_TRAINED_HOURLY and model_artifact is not None:
+        hourly = model_artifact.get("hourly", {}).get(str(hour), {})
+        historical = float(hourly.get("solar_kw", scenario_solar))
+        return max(0.0, historical * 0.65 + scenario_solar * 0.35)
 
     historical = _hourly_average(history, "solar_kw", hour)
     if historical <= 0 and scenario_solar <= 0:
@@ -183,4 +214,6 @@ def _temperature_sensitivity(history: list[dict]) -> float:
 def _scenario_demand_adjustment(model_name: str, cooling_delta: float) -> float:
     if model_name == MODEL_SEASONAL:
         return cooling_delta
+    if model_name == MODEL_TRAINED_HOURLY:
+        return 0.0
     return cooling_delta * 0.35
