@@ -5,6 +5,7 @@ const state = {
   optimized: null,
   comparison: null,
   model: null,
+  evaluation: null,
   dataHealth: null,
 };
 
@@ -72,17 +73,19 @@ async function loadSources() {
 }
 
 async function refresh() {
-  const [forecastData, optimizedData, comparisonData, modelData, dataHealth] = await Promise.all([
+  const [forecastData, optimizedData, comparisonData, modelData, evaluationData, dataHealth] = await Promise.all([
     getJson(`/api/forecast?scenario=${state.scenario}&source=${state.source}`),
     getJson(`/api/simulate?scenario=${state.scenario}&source=${state.source}&controller=optimized`),
     getJson(`/api/optimize?scenario=${state.scenario}&source=${state.source}`),
-    getJson("/api/model-status"),
+    getJson(`/api/model-status?source=${state.source}&scenario=${state.scenario}`),
+    getJson(`/api/forecast-evaluation?source=${state.source}&scenario=${state.scenario}`),
     getJson(`/api/data-health?scenario=${state.scenario}&source=${state.source}`),
   ]);
   state.forecast = forecastData.forecast;
   state.optimized = optimizedData;
   state.comparison = comparisonData.comparison;
   state.model = modelData;
+  state.evaluation = evaluationData;
   state.dataHealth = dataHealth;
   render();
 }
@@ -115,8 +118,9 @@ function render() {
 
   $("#modelMetrics").innerHTML = [
     metric("Active model", state.model.active_model, state.model.stage),
-    metric("Target model", state.model.target_model, `${state.model.forecast_horizon_hours}h horizon`),
-    metric("MAE", number(state.model.mae_kw, " kW"), `sMAPE ${number(state.model.smape * 100, "%")}`),
+    metric("MAE", number(state.evaluation.mae_kw, " kW"), `RMSE ${number(state.evaluation.rmse_kw, " kW")}`),
+    metric("sMAPE", number(state.evaluation.smape * 100, "%"), `Bias ${number(state.evaluation.bias_kw, " kW")}`),
+    metric("P10-P90 coverage", number(state.evaluation.coverage_p10_p90 * 100, "%"), `${state.evaluation.evaluated_points} backtest points`),
     metric("Data health", `${state.dataHealth.valid_rows}/${state.dataHealth.row_count}`, `${state.dataHealth.invalid_rows} invalid rows`),
   ].join("");
 

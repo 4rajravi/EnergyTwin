@@ -61,9 +61,9 @@ flowchart TD
 | --- | --- | --- |
 | 0. Local MVP skeleton | Done | Dashboard, APIs, forecast contract, simulator, optimizer, tests |
 | 1. Data import and validation | In progress | CSV import, schema validation, data-health UI |
-| 2. Real public meter data adapter | Next decision | Convert Building Data Genome-style meter data into our schema |
-| 3. Weather and solar enrichment | Not started | Add NASA POWER weather/solar columns |
-| 4. Forecasting upgrade | Not started | Replace seasonal baseline with stronger models |
+| 2. Real public meter data adapter | Adapter ready | Convert Building Data Genome-style meter data into our schema |
+| 3. Weather and solar enrichment | Manual join ready | Add weather/solar/price/carbon columns by timestamp |
+| 4. Forecasting upgrade | Baseline metrics ready | Replace seasonal baseline with stronger models |
 | 5. Simulator and optimizer upgrade | Not started | More realistic battery, tariff, comfort, HVAC behavior |
 | 6. MLOps pipeline | Not started | MLflow, pipeline runs, evaluation, drift monitoring |
 | 7. Database and cache | Not started | Postgres/TimescaleDB and Redis |
@@ -78,22 +78,24 @@ flowchart TD
 | Forecast model now | simple baseline, TFT immediately | simple baseline contract | Lets UI/simulator stabilize before training complexity |
 | Streaming now | none, Kafka, Kafka + Flink | none | No live telemetry yet |
 | Database now | files, DuckDB, Postgres/TimescaleDB | files | Faster iteration while schema is still changing |
+| Public meter data | downloader, adapter, manual CSV only | adapter | Supports real data shape without network or large files |
+| Weather enrichment | NASA POWER first, manual join, placeholders | manual join | Teaches the join contract before adding an external API |
+| Forecasting upgrade | jump to deep learning, measured baseline first | measured baseline | Gives us metrics before adding heavier ML |
 
 ## Next Step
 
-Recommended next step: finish Phase 1 by making imported CSV data fully usable from the dashboard.
+Recommended next step: choose whether to improve the forecasting model or improve the simulator.
 
 That means:
 
-1. Create a sample imported CSV command.
-2. Make the dashboard show whether imported data is available.
-3. Let forecast/simulation use imported CSV when selected.
-4. Keep tests around fallback behavior and validation failures.
+1. Add a stronger statistical forecasting baseline, or
+2. Improve simulator realism with tariff demand charges and battery degradation, or
+3. Add NASA POWER as an automated weather producer.
 
-After that, choose between:
+Options:
 
-- **Building Data Genome adapter**: start using real public building meter data.
-- **Simulator improvements**: improve the energy twin before real data.
-- **Forecasting upgrade**: add stronger forecasting baselines before deep learning.
+- **Forecasting baseline**: teaches evaluation and makes the AI part more real.
+- **Simulator improvements**: makes policy comparison more credible.
+- **NASA POWER adapter**: automates weather enrichment now that the join contract exists.
 
-My recommendation after Phase 1: Building Data Genome adapter.
+My recommendation: improve the forecasting baseline next, then add NASA POWER.

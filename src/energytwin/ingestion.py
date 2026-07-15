@@ -98,6 +98,9 @@ def _normalize_row(row: dict[str, str | None], line_number: int) -> dict[str, fl
 
 def _validation_issues(rows: list[dict]) -> list[str]:
     issues: list[str] = []
+    if not rows:
+        return ["dataset has no rows"]
+
     previous_timestamp: datetime | None = None
     for index, row in enumerate(rows, start=1):
         label = f"row {row.get('_line_number', index)}"

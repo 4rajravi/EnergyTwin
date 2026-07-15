@@ -33,6 +33,8 @@ python3 scripts/import_dataset.py data/raw/my-building.csv --output data/process
 ```
 
 See [docs/data-import.md](docs/data-import.md) for the required schema.
+See [docs/public-data.md](docs/public-data.md) for Building Data Genome-style adapter examples.
+See [docs/weather-enrichment.md](docs/weather-enrichment.md) for joining weather, solar, price, or carbon CSV data.
 
 ## Project Map
 
@@ -45,7 +47,9 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/data.py`: deterministic demo data and scenario generation.
 - `src/energytwin/ingestion.py`: local CSV ingestion, schema checks, and data-health validation.
 - `src/energytwin/sources.py`: data-source selection between demo data and imported CSV.
+- `src/energytwin/enrichment.py`: timestamp-based joins for weather, solar, price, and carbon data.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.
+- `/api/forecast-evaluation`: local backtest metrics for the active baseline.
 - `src/energytwin/simulator.py`: battery, grid import/export, cost, carbon, and comfort simulation.
 - `src/energytwin/optimizer.py`: baseline, rule, and optimized controller schedules.
 - `src/energytwin/server.py`: dependency-free HTTP API and static dashboard server.

@@ -52,6 +52,18 @@ class ForecastPoint:
 
 
 @dataclass(frozen=True)
+class ForecastMetrics:
+    model_name: str
+    horizon_hours: int
+    evaluated_points: int
+    mae_kw: float
+    rmse_kw: float
+    smape: float
+    bias_kw: float
+    coverage_p10_p90: float
+
+
+@dataclass(frozen=True)
 class SimulationPoint:
     timestamp: str
     demand_kw: float

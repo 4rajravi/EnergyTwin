@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .data import available_scenarios, get_scenario
 from .domain import serialize
-from .forecasting import build_forecast, model_status
+from .forecasting import build_forecast, evaluate_forecast_baseline, model_status
 from .simulator import compare_policies, simulate
 from .sources import available_data_sources, current_data_health, load_history
 
@@ -43,8 +43,9 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         scenario_key = query.get("scenario", ["normal"])[0]
         controller = query.get("controller", ["baseline"])[0]
         source_key = query.get("source", ["demo"])[0]
+        model_name = query.get("model", ["weighted-baseline-v1"])[0]
         history, source_label = load_history(source_key=source_key, scenario_key=scenario_key)
-        forecast = build_forecast(history, scenario_key=scenario_key)
+        forecast = build_forecast(history, scenario_key=scenario_key, model_name=model_name)
 
         if path == "/api/scenarios":
             payload = {"scenarios": available_scenarios()}
@@ -75,7 +76,10 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
                 "comparison": compare_policies(forecast),
             }
         elif path == "/api/model-status":
-            payload = model_status(len(history))
+            metrics = evaluate_forecast_baseline(history, model_name=model_name)
+            payload = model_status(len(history), metrics)
+        elif path == "/api/forecast-evaluation":
+            payload = serialize(evaluate_forecast_baseline(history, model_name=model_name))
         elif path == "/api/data-health":
             payload = serialize(current_data_health(source_key=source_key, scenario_key=scenario_key))
         else:

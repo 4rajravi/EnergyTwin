@@ -48,6 +48,7 @@ flowchart LR
         D4["/api/simulate"]
         D5["/api/optimize"]
         D6["/api/model-status"]
+        D7["/api/forecast-evaluation"]
     end
 
     subgraph UI
@@ -67,6 +68,7 @@ flowchart LR
     C1 --> C3
     C3 --> C4
     C1 --> D3
+    C1 --> D7
     C3 --> D4
     C4 --> D5
     B1 --> D1
@@ -77,6 +79,7 @@ flowchart LR
     D4 --> E1
     D5 --> E3
     D6 --> E4
+    D7 --> E4
 ```
 
 ## 3. Current Runtime Design
@@ -115,6 +118,8 @@ sequenceDiagram
 | Data generator | `src/energytwin/data.py` | creates deterministic demo building data and scenarios |
 | Ingestion | `src/energytwin/ingestion.py` | loads CSV, validates schema, reports data health |
 | Source selector | `src/energytwin/sources.py` | chooses demo data or imported CSV |
+| Public-data adapters | `src/energytwin/adapters` | converts external dataset shapes into the internal schema |
+| Enrichment | `src/energytwin/enrichment.py` | joins weather, solar, price, and carbon data by timestamp |
 | Forecasting | `src/energytwin/forecasting.py` | returns a 24-hour forecast contract |
 | Simulator | `src/energytwin/simulator.py` | simulates grid import/export, battery, cost, carbon, comfort |
 | Optimizer | `src/energytwin/optimizer.py` | creates baseline, rule, and optimized schedules |
@@ -136,7 +141,7 @@ Every data source should eventually emit rows shaped like this:
 | `price_usd_per_kwh` | float | yes | electricity price |
 | `carbon_kg_per_kwh` | float | yes | carbon intensity |
 
-This contract matters because forecasting, simulation, and optimization should not care whether data came from demo generation, CSV, Building Data Genome, NASA POWER, or a future database.
+This contract matters because forecasting, simulation, and optimization should not care whether data came from demo generation, CSV, Building Data Genome, NASA POWER, manual weather files, or a future database.
 
 ## 6. API Design
 
@@ -148,6 +153,7 @@ Current API endpoints:
 | `/api/data-health` | show row count, valid rows, invalid rows, columns, date range |
 | `/api/scenarios` | list scenario options |
 | `/api/forecast` | return 24-hour demand/solar forecast |
+| `/api/forecast-evaluation` | return local forecast backtest metrics |
 | `/api/simulate` | simulate one controller |
 | `/api/optimize` | compare baseline, rule, and optimized policies |
 | `/api/model-status` | show model and MLOps state |
@@ -274,10 +280,11 @@ flowchart TD
 
 Current model:
 
-- deterministic seasonal baseline
+- measured weighted baseline
 - 24-hour forecast
 - demand and solar outputs
 - uncertainty bands
+- local backtest metrics
 
 Future options:
 
@@ -290,9 +297,10 @@ Future options:
 
 Recommended path:
 
-1. add stronger statistical baseline
-2. add N-HiTS or PatchTST
-3. add TFT once data/features are mature
+1. keep improving the measured baseline and evaluation
+2. add stronger statistical baselines
+3. add N-HiTS or PatchTST
+4. add TFT once data/features are mature
 
 ## 12. Simulator Design
 
