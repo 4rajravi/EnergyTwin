@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .data import available_scenarios, get_scenario
-from .domain import serialize
+from .domain import BatterySpec, TariffSpec, serialize
 from .forecasting import build_forecast, evaluate_forecast_baseline, model_status
 from .simulator import compare_policies, simulate
 from .sources import available_data_sources, current_data_health, load_history
@@ -44,8 +44,10 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         controller = query.get("controller", ["baseline"])[0]
         source_key = query.get("source", ["demo"])[0]
         model_name = query.get("model", ["weighted-baseline-v1"])[0]
-        history, source_label = load_history(source_key=source_key, scenario_key=scenario_key)
-        forecast = build_forecast(history, scenario_key=scenario_key, model_name=model_name)
+        battery, tariff = _economics_from_query(query)
+        scenario = get_scenario(scenario_key, _scenario_overrides_from_query(query))
+        history, source_label = load_history(source_key=source_key, scenario_key=scenario_key, scenario=scenario)
+        forecast = build_forecast(history, scenario_key=scenario_key, scenario=scenario, model_name=model_name)
 
         if path == "/api/scenarios":
             payload = {"scenarios": available_scenarios()}
@@ -58,22 +60,24 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
                     "building_type": "commercial-office",
                     "floor_area_m2": 18400,
                 },
-                "scenario": serialize(get_scenario(scenario_key)),
+                "scenario": serialize(scenario),
                 "source": source_label,
                 "forecast": serialize(forecast),
             }
         elif path == "/api/simulate":
-            points, metrics = simulate(forecast, controller)
+            points, metrics = simulate(forecast, controller, battery=battery, tariff=tariff)
             payload = {
                 "scenario": scenario_key,
                 "controller": controller,
+                "economics": serialize({"battery": battery, "tariff": tariff}),
                 "metrics": serialize(metrics),
                 "points": serialize(points),
             }
         elif path == "/api/optimize":
             payload = {
                 "scenario": scenario_key,
-                "comparison": compare_policies(forecast),
+                "economics": serialize({"battery": battery, "tariff": tariff}),
+                "comparison": compare_policies(forecast, battery=battery, tariff=tariff),
             }
         elif path == "/api/model-status":
             metrics = evaluate_forecast_baseline(history, model_name=model_name)
@@ -81,7 +85,7 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         elif path == "/api/forecast-evaluation":
             payload = serialize(evaluate_forecast_baseline(history, model_name=model_name))
         elif path == "/api/data-health":
-            payload = serialize(current_data_health(source_key=source_key, scenario_key=scenario_key))
+            payload = serialize(current_data_health(source_key=source_key, scenario_key=scenario_key, scenario=scenario))
         else:
             self._json({"error": "not found"}, status=404)
             return
@@ -118,6 +122,64 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+
+def _economics_from_query(query: dict[str, list[str]]) -> tuple[BatterySpec, TariffSpec]:
+    battery = BatterySpec(
+        wear_cost_usd_per_kwh_throughput=_float_query(query, "battery_wear", BatterySpec().wear_cost_usd_per_kwh_throughput, 0.0, 1.0)
+    )
+    tariff = TariffSpec(
+        demand_charge_usd_per_kw_day=_float_query(query, "demand_charge", TariffSpec().demand_charge_usd_per_kw_day, 0.0, 100.0),
+        export_credit_fraction=_float_query(query, "export_credit", TariffSpec().export_credit_fraction, 0.0, 1.0),
+    )
+    return battery, tariff
+
+
+def _scenario_overrides_from_query(query: dict[str, list[str]]) -> dict[str, float]:
+    return {
+        key: value
+        for key, value in {
+            "temperature_delta_c": _optional_float_query(query, "temp_delta"),
+            "cloud_cover": _optional_float_query(query, "cloud_cover"),
+            "price_multiplier": _optional_float_query(query, "price_multiplier"),
+            "ev_spike_kw": _optional_float_query(query, "ev_spike"),
+            "comfort_strictness": _optional_float_query(query, "comfort"),
+        }.items()
+        if value is not None
+    }
+
+
+def _optional_float_query(query: dict[str, list[str]], key: str) -> float | None:
+    if key not in query:
+        return None
+    return _float_query(
+        query,
+        key,
+        0.0,
+        {
+            "temp_delta": -20.0,
+            "cloud_cover": 0.0,
+            "price_multiplier": 0.1,
+            "ev_spike": 0.0,
+            "comfort": 0.0,
+        }[key],
+        {
+            "temp_delta": 20.0,
+            "cloud_cover": 1.0,
+            "price_multiplier": 5.0,
+            "ev_spike": 500.0,
+            "comfort": 1.0,
+        }[key],
+    )
+
+
+def _float_query(query: dict[str, list[str]], key: str, default: float, minimum: float, maximum: float) -> float:
+    raw = query.get(key, [str(default)])[0]
+    try:
+        value = float(raw)
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
 
 
 def main() -> None:

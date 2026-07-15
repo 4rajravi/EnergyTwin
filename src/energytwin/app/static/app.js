@@ -7,6 +7,18 @@ const state = {
   model: null,
   evaluation: null,
   dataHealth: null,
+  economics: {
+    demandCharge: 3.2,
+    exportCredit: 0.32,
+    batteryWear: 0.018,
+  },
+  customScenario: {
+    tempDelta: 0,
+    cloudCover: 0.25,
+    priceMultiplier: 1,
+    evSpike: 0,
+    comfort: 0.5,
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -55,6 +67,7 @@ async function loadScenarios() {
   select.innerHTML = data.scenarios.map((item) => `<option value="${item.key}">${item.label}</option>`).join("");
   select.addEventListener("change", async () => {
     state.scenario = select.value;
+    syncScenarioControlsToPreset();
     await refresh();
   });
 }
@@ -72,14 +85,71 @@ async function loadSources() {
   });
 }
 
+function setEconomicsControls() {
+  const controls = [
+    ["#demandCharge", "demandCharge", (value) => Number(value)],
+    ["#exportCredit", "exportCredit", (value) => Number(value) / 100],
+    ["#batteryWear", "batteryWear", (value) => Number(value)],
+  ];
+  controls.forEach(([selector, key, parse]) => {
+    const input = $(selector);
+    input.addEventListener("change", async () => {
+      const value = parse(input.value);
+      if (Number.isFinite(value)) {
+        state.economics[key] = value;
+        await refresh();
+      }
+    });
+  });
+}
+
+function setScenarioControls() {
+  const controls = [
+    ["#tempDelta", "tempDelta", (value) => Number(value)],
+    ["#cloudCover", "cloudCover", (value) => Number(value) / 100],
+    ["#priceMultiplier", "priceMultiplier", (value) => Number(value)],
+    ["#evSpike", "evSpike", (value) => Number(value)],
+    ["#comfort", "comfort", (value) => Number(value) / 100],
+  ];
+  controls.forEach(([selector, key, parse]) => {
+    const input = $(selector);
+    input.addEventListener("change", async () => {
+      const value = parse(input.value);
+      if (Number.isFinite(value)) {
+        state.customScenario[key] = value;
+        await refresh();
+      }
+    });
+  });
+}
+
+function syncScenarioControlsToPreset() {
+  const presets = {
+    normal: { tempDelta: 0, cloudCover: 0.25, priceMultiplier: 1, evSpike: 0, comfort: 0.5 },
+    hot: { tempDelta: 7, cloudCover: 0.18, priceMultiplier: 1, evSpike: 0, comfort: 0.8 },
+    cloudy: { tempDelta: -1, cloudCover: 0.78, priceMultiplier: 1, evSpike: 0, comfort: 0.5 },
+    price: { tempDelta: 0, cloudCover: 0.32, priceMultiplier: 1.65, evSpike: 0, comfort: 0.5 },
+    ev: { tempDelta: 0, cloudCover: 0.25, priceMultiplier: 1, evSpike: 110, comfort: 0.5 },
+    carbon: { tempDelta: 0, cloudCover: 0.4, priceMultiplier: 1.15, evSpike: 0, comfort: 0.5 },
+  };
+  state.customScenario = { ...presets[state.scenario] };
+  $("#tempDelta").value = state.customScenario.tempDelta;
+  $("#cloudCover").value = Math.round(state.customScenario.cloudCover * 100);
+  $("#priceMultiplier").value = state.customScenario.priceMultiplier;
+  $("#evSpike").value = state.customScenario.evSpike;
+  $("#comfort").value = Math.round(state.customScenario.comfort * 100);
+}
+
 async function refresh() {
+  const economics = economicsQuery();
+  const scenario = scenarioQuery();
   const [forecastData, optimizedData, comparisonData, modelData, evaluationData, dataHealth] = await Promise.all([
-    getJson(`/api/forecast?scenario=${state.scenario}&source=${state.source}`),
-    getJson(`/api/simulate?scenario=${state.scenario}&source=${state.source}&controller=optimized`),
-    getJson(`/api/optimize?scenario=${state.scenario}&source=${state.source}`),
-    getJson(`/api/model-status?source=${state.source}&scenario=${state.scenario}`),
-    getJson(`/api/forecast-evaluation?source=${state.source}&scenario=${state.scenario}`),
-    getJson(`/api/data-health?scenario=${state.scenario}&source=${state.source}`),
+    getJson(`/api/forecast?scenario=${state.scenario}&source=${state.source}&${scenario}`),
+    getJson(`/api/simulate?scenario=${state.scenario}&source=${state.source}&controller=optimized&${scenario}&${economics}`),
+    getJson(`/api/optimize?scenario=${state.scenario}&source=${state.source}&${scenario}&${economics}`),
+    getJson(`/api/model-status?source=${state.source}&scenario=${state.scenario}&${scenario}`),
+    getJson(`/api/forecast-evaluation?source=${state.source}&scenario=${state.scenario}&${scenario}`),
+    getJson(`/api/data-health?scenario=${state.scenario}&source=${state.source}&${scenario}`),
   ]);
   state.forecast = forecastData.forecast;
   state.optimized = optimizedData;
@@ -88,6 +158,26 @@ async function refresh() {
   state.evaluation = evaluationData;
   state.dataHealth = dataHealth;
   render();
+}
+
+function scenarioQuery() {
+  const params = new URLSearchParams({
+    temp_delta: String(state.customScenario.tempDelta),
+    cloud_cover: String(state.customScenario.cloudCover),
+    price_multiplier: String(state.customScenario.priceMultiplier),
+    ev_spike: String(state.customScenario.evSpike),
+    comfort: String(state.customScenario.comfort),
+  });
+  return params.toString();
+}
+
+function economicsQuery() {
+  const params = new URLSearchParams({
+    demand_charge: String(state.economics.demandCharge),
+    export_credit: String(state.economics.exportCredit),
+    battery_wear: String(state.economics.batteryWear),
+  });
+  return params.toString();
 }
 
 function render() {
@@ -105,15 +195,15 @@ function render() {
   $("#forecastMetrics").innerHTML = [
     metric("Peak demand", number(Math.max(...state.forecast.map((point) => point.demand_kw)), " kW"), "P90 band included"),
     metric("Solar max", number(Math.max(...state.forecast.map((point) => point.solar_kw)), " kW"), "Scenario adjusted"),
-    metric("Avg price", money(avg(state.forecast.map((point) => point.price_usd_per_kwh)) * 1000), "per MWh equivalent"),
-    metric("Carbon max", number(Math.max(...state.forecast.map((point) => point.carbon_kg_per_kwh)), " kg/kWh"), "Grid estimate"),
+    metric("Avg price", money(avg(state.forecast.map((point) => point.price_usd_per_kwh)) * 1000), `${number(state.customScenario.priceMultiplier, "x")} multiplier`),
+    metric("Weather", `${number(state.customScenario.tempDelta, "C")} / ${number(state.customScenario.cloudCover * 100, "%")}`, "temp delta / cloud cover"),
   ].join("");
 
   $("#policyGrid").innerHTML = [
     policyCard("Baseline", state.comparison.baseline),
     policyCard("Rule controller", state.comparison.rule),
     policyCard("Optimized controller", state.comparison.optimized),
-    metric("Battery wear", money(state.comparison.optimized.battery_wear_cost_usd), `${number(state.comparison.optimized.battery_cycles, " cycles")} optimized`),
+    metric("Economics", money(state.comparison.optimized.battery_wear_cost_usd), `${money(state.comparison.optimized.demand_charge_usd)} demand, ${number(state.economics.exportCredit * 100, "%")} export`),
   ].join("");
 
   $("#modelMetrics").innerHTML = [
@@ -310,6 +400,9 @@ function label(svg, text, x, y, className) {
 
 window.addEventListener("DOMContentLoaded", async () => {
   setTabs();
+  setEconomicsControls();
+  setScenarioControls();
+  syncScenarioControlsToPreset();
   await loadSources();
   await loadScenarios();
   await refresh();

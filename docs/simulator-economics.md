@@ -32,6 +32,18 @@ This makes policy comparison more realistic:
 
 The Scenario Lab dashboard shows these components as a policy cost breakdown so the tradeoff is visible without inspecting raw API JSON.
 
+The dashboard also exposes these assumptions as editable Scenario Lab controls:
+
+- demand charge in dollars per peak kW per day
+- export credit as a percentage of import price
+- battery wear cost in dollars per kWh throughput
+
+The backend accepts the same assumptions through query parameters:
+
+```text
+/api/optimize?demand_charge=3.2&export_credit=0.32&battery_wear=0.018
+```
+
 ## Still Simplified
 
 This is not yet a full utility tariff model. Future additions can include:

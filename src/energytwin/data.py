@@ -27,8 +27,19 @@ SCENARIOS: dict[str, Scenario] = {
 }
 
 
-def get_scenario(key: str | None) -> Scenario:
-    return SCENARIOS.get(key or "normal", SCENARIOS["normal"])
+def get_scenario(key: str | None, overrides: dict[str, float] | None = None) -> Scenario:
+    base = SCENARIOS.get(key or "normal", SCENARIOS["normal"])
+    if not overrides:
+        return base
+    return Scenario(
+        key=base.key,
+        label=base.label,
+        temperature_delta_c=overrides.get("temperature_delta_c", base.temperature_delta_c),
+        cloud_cover=overrides.get("cloud_cover", base.cloud_cover),
+        price_multiplier=overrides.get("price_multiplier", base.price_multiplier),
+        ev_spike_kw=overrides.get("ev_spike_kw", base.ev_spike_kw),
+        comfort_strictness=overrides.get("comfort_strictness", base.comfort_strictness),
+    )
 
 
 def available_scenarios() -> list[dict[str, str]]:
@@ -76,8 +87,12 @@ def carbon_intensity(hour: int, scenario: Scenario) -> float:
     return max(0.12, carbon)
 
 
-def generate_history(hours: int = 168, scenario_key: str = "normal") -> list[dict[str, float | int | str]]:
-    scenario = get_scenario(scenario_key)
+def generate_history(
+    hours: int = 168,
+    scenario_key: str = "normal",
+    scenario: Scenario | None = None,
+) -> list[dict[str, float | int | str]]:
+    scenario = scenario or get_scenario(scenario_key)
     start = datetime(2026, 7, 7, 0, 0)
     rows: list[dict[str, float | int | str]] = []
     for offset in range(hours):

@@ -64,7 +64,7 @@ flowchart TD
 | 2. Real public meter data adapter | Adapter ready | Convert Building Data Genome-style meter data into our schema |
 | 3. Weather and solar enrichment | Manual join ready | Add weather/solar/price/carbon columns by timestamp |
 | 4. Forecasting upgrade | Baseline metrics ready | Replace seasonal baseline with stronger models |
-| 5. Simulator and optimizer upgrade | Tariff economics visible | More realistic battery, tariff, comfort, HVAC behavior |
+| 5. Simulator and optimizer upgrade | Configurable economics ready | More realistic battery, tariff, comfort, HVAC behavior |
 | 6. MLOps pipeline | Not started | MLflow, pipeline runs, evaluation, drift monitoring |
 | 7. Database and cache | Not started | Postgres/TimescaleDB and Redis |
 | 8. Streaming | Deferred | Kafka/Flink only if live telemetry needs it |
@@ -82,6 +82,8 @@ flowchart TD
 | Weather enrichment | NASA POWER first, manual join, placeholders | manual join | Teaches the join contract before adding an external API |
 | Forecasting upgrade | jump to deep learning, measured baseline first | measured baseline | Gives us metrics before adding heavier ML |
 | Simulator economics | energy cost only, demand charge, battery wear | demand charge + battery wear | Makes peak reduction and cycling tradeoffs visible |
+| Economic assumptions | hardcoded, API params, dashboard controls | dashboard controls | Lets users test policy sensitivity without code changes |
+| Scenario assumptions | fixed presets, API params, dashboard controls | dashboard controls | Lets users tune weather, price, EV, and comfort assumptions |
 
 ## Next Step
 

@@ -133,6 +133,39 @@ select {
   gap: 12px;
 }
 
+.economics-bar,
+.scenario-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.economics-bar {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.economics-bar label,
+.scenario-controls label {
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.economics-bar input,
+.scenario-controls input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+}
+
 .metric,
 .policy,
 .chart-band,
@@ -304,6 +337,8 @@ svg {
 
   .metric-grid,
   .policy-grid,
+  .economics-bar,
+  .scenario-controls,
   .ops-layout {
     grid-template-columns: 1fr 1fr;
   }
@@ -317,6 +352,8 @@ svg {
 
   .metric-grid,
   .policy-grid,
+  .economics-bar,
+  .scenario-controls,
   .ops-layout {
     grid-template-columns: 1fr;
   }

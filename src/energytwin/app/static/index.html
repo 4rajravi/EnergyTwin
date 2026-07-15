@@ -47,6 +47,34 @@
     </section>
 
     <section id="scenario" class="panel">
+      <div class="scenario-controls" aria-label="Scenario assumptions">
+        <label for="tempDelta">Temp delta C
+          <input id="tempDelta" type="number" min="-20" max="20" step="0.5" value="0">
+        </label>
+        <label for="cloudCover">Cloud cover %
+          <input id="cloudCover" type="number" min="0" max="100" step="1" value="25">
+        </label>
+        <label for="priceMultiplier">Price multiplier
+          <input id="priceMultiplier" type="number" min="0.1" max="5" step="0.05" value="1">
+        </label>
+        <label for="evSpike">EV spike kW
+          <input id="evSpike" type="number" min="0" max="500" step="5" value="0">
+        </label>
+        <label for="comfort">Comfort strictness %
+          <input id="comfort" type="number" min="0" max="100" step="5" value="50">
+        </label>
+      </div>
+      <div class="economics-bar" aria-label="Economics assumptions">
+        <label for="demandCharge">Demand charge
+          <input id="demandCharge" type="number" min="0" max="100" step="0.1" value="3.2">
+        </label>
+        <label for="exportCredit">Export credit %
+          <input id="exportCredit" type="number" min="0" max="100" step="1" value="32">
+        </label>
+        <label for="batteryWear">Battery wear
+          <input id="batteryWear" type="number" min="0" max="1" step="0.001" value="0.018">
+        </label>
+      </div>
       <div class="policy-grid" id="policyGrid"></div>
       <div class="chart-band">
         <div class="section-head">

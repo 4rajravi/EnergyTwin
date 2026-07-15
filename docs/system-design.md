@@ -165,6 +165,14 @@ Current query parameters:
 | `source` | data-health, forecast, simulate, optimize | `demo`, `imported` |
 | `scenario` | forecast, simulate, optimize | `normal`, `price`, `hot` |
 | `controller` | simulate | `baseline`, `rule`, `optimized` |
+| `temp_delta` | forecast, simulate, optimize | `7.0` |
+| `cloud_cover` | forecast, simulate, optimize | `0.78` |
+| `price_multiplier` | forecast, simulate, optimize | `1.65` |
+| `ev_spike` | forecast, simulate, optimize | `110` |
+| `comfort` | forecast, simulate, optimize | `0.8` |
+| `demand_charge` | simulate, optimize | `3.2` |
+| `export_credit` | simulate, optimize | `0.32` |
+| `battery_wear` | simulate, optimize | `0.018` |
 
 ## 7. Storage Design
 
@@ -330,7 +338,7 @@ Outputs:
 - comfort risk
 - battery cycles
 
-The dashboard exposes the cost components in the Scenario Lab so users can see whether a policy is saving money through energy arbitrage, peak reduction, or both.
+The dashboard exposes the cost components and editable economic assumptions in the Scenario Lab so users can see whether a policy is saving money through energy arbitrage, peak reduction, or both.
 
 Future improvements:
 

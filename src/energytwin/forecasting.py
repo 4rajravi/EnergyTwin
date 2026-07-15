@@ -4,7 +4,7 @@ import math
 from datetime import datetime, timedelta
 
 from .data import PROFILE, get_scenario, price, solar_shape, weather_temp
-from .domain import ForecastMetrics, ForecastPoint
+from .domain import ForecastMetrics, ForecastPoint, Scenario
 
 
 MODEL_SEASONAL = "seasonal"
@@ -20,9 +20,10 @@ def build_forecast(
     history: list[dict],
     scenario_key: str = "normal",
     horizon_hours: int = 24,
+    scenario: Scenario | None = None,
     model_name: str = MODEL_WEIGHTED,
 ) -> list[ForecastPoint]:
-    scenario = get_scenario(scenario_key)
+    scenario = scenario or get_scenario(scenario_key)
     last_ts = datetime.fromisoformat(str(history[-1]["timestamp"]))
     points: list[ForecastPoint] = []
 

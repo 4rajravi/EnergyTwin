@@ -8,13 +8,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from energytwin.data import generate_history
+from energytwin.data import generate_history, get_scenario
 from energytwin.adapters.building_data_genome import convert_bdg_long_csv, convert_bdg_wide_csv
 from energytwin.domain import BatterySpec, TariffSpec
 from energytwin.enrichment import enrich_rows_from_csv
 from energytwin.forecasting import build_forecast, evaluate_forecast_baseline
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
-from energytwin.simulator import simulate
+from energytwin.simulator import compare_policies, simulate
 from energytwin.sources import load_history
 
 
@@ -40,6 +40,14 @@ class EnergyTwinTests(unittest.TestCase):
         seasonal = build_forecast(history, model_name="seasonal")
         self.assertEqual(len(weighted), len(seasonal))
         self.assertTrue(all(point.demand_kw >= 0 for point in weighted))
+
+    def test_custom_scenario_overrides_affect_forecast(self) -> None:
+        base = get_scenario("normal")
+        custom = get_scenario("normal", {"temperature_delta_c": 8.0, "cloud_cover": 0.9, "ev_spike_kw": 150.0})
+        base_forecast = build_forecast(generate_history(scenario=base), scenario=base)
+        custom_forecast = build_forecast(generate_history(scenario=custom), scenario=custom)
+        self.assertGreater(max(point.demand_kw for point in custom_forecast), max(point.demand_kw for point in base_forecast))
+        self.assertLess(max(point.solar_kw for point in custom_forecast), max(point.solar_kw for point in base_forecast))
 
     def test_simulation_respects_battery_bounds(self) -> None:
         forecast = build_forecast(generate_history(), "price")
@@ -69,6 +77,13 @@ class EnergyTwinTests(unittest.TestCase):
             - optimized.export_credit_usd
         )
         self.assertAlmostEqual(optimized.total_cost_usd, round(expected, 2), places=2)
+
+    def test_policy_comparison_uses_custom_economics(self) -> None:
+        forecast = build_forecast(generate_history(), "price")
+        low_demand_charge = compare_policies(forecast, tariff=TariffSpec(demand_charge_usd_per_kw_day=0.0))
+        high_demand_charge = compare_policies(forecast, tariff=TariffSpec(demand_charge_usd_per_kw_day=10.0))
+        self.assertGreater(high_demand_charge["baseline"]["total_cost_usd"], low_demand_charge["baseline"]["total_cost_usd"])
+        self.assertGreater(high_demand_charge["optimized"]["demand_charge_usd"], low_demand_charge["optimized"]["demand_charge_usd"])
 
     def test_data_health_accepts_generated_rows(self) -> None:
         rows = generate_history()

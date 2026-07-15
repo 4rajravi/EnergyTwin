@@ -55,6 +55,8 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/server.py`: dependency-free HTTP API and static dashboard server.
 - `src/energytwin/app/static`: control-room dashboard.
 
+Scenario Lab controls expose weather, cloud cover, price multiplier, EV spike, comfort strictness, demand charge, export credit, and battery wear assumptions in the UI.
+
 ## Service Roadmap
 
 For the MVP, use local files and in-memory computation.

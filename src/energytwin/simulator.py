@@ -94,10 +94,14 @@ def simulate(
     return points, metrics
 
 
-def compare_policies(forecast: list[ForecastPoint]) -> dict[str, dict]:
-    _, baseline = simulate(forecast, "baseline")
-    _, rule = simulate(forecast, "rule")
-    _, optimized = simulate(forecast, "optimized")
+def compare_policies(
+    forecast: list[ForecastPoint],
+    battery: BatterySpec | None = None,
+    tariff: TariffSpec | None = None,
+) -> dict[str, dict]:
+    _, baseline = simulate(forecast, "baseline", battery=battery, tariff=tariff)
+    _, rule = simulate(forecast, "rule", battery=battery, tariff=tariff)
+    _, optimized = simulate(forecast, "optimized", battery=battery, tariff=tariff)
     return {
         "baseline": _metrics_dict(baseline, baseline),
         "rule": _metrics_dict(rule, baseline),

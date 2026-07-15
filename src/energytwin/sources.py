@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .data import generate_history
+from .domain import Scenario
 from .ingestion import data_health, load_meter_csv
 
 
@@ -40,12 +41,16 @@ def available_data_sources() -> list[DataSource]:
     ]
 
 
-def load_history(source_key: str = "demo", scenario_key: str = "normal") -> tuple[list[dict], str]:
+def load_history(
+    source_key: str = "demo",
+    scenario_key: str = "normal",
+    scenario: Scenario | None = None,
+) -> tuple[list[dict], str]:
     if source_key == "imported" and PROCESSED_CURRENT.exists():
         return load_meter_csv(PROCESSED_CURRENT), f"csv:{PROCESSED_CURRENT.name}"
-    return generate_history(scenario_key=scenario_key), f"demo:{scenario_key}"
+    return generate_history(scenario_key=scenario_key, scenario=scenario), f"demo:{scenario_key}"
 
 
-def current_data_health(source_key: str = "demo", scenario_key: str = "normal"):
-    rows, source = load_history(source_key=source_key, scenario_key=scenario_key)
+def current_data_health(source_key: str = "demo", scenario_key: str = "normal", scenario: Scenario | None = None):
+    rows, source = load_history(source_key=source_key, scenario_key=scenario_key, scenario=scenario)
     return data_health(rows, source=source)
