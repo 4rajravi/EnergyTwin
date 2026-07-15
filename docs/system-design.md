@@ -338,11 +338,11 @@ Outputs:
 - comfort risk
 - battery cycles
 
-The dashboard exposes the cost components and editable economic assumptions in the Scenario Lab so users can see whether a policy is saving money through energy arbitrage, peak reduction, or both.
+The dashboard exposes the cost components and editable economic assumptions in the Scenario Lab so users can see whether a policy is saving money through energy arbitrage, peak reduction, or both. The optimized controller also uses those economics while choosing the battery schedule.
 
 Future improvements:
 
-- tariff demand charges
+- richer utility tariff structures
 - richer battery degradation
 - HVAC thermal model
 - occupancy schedule

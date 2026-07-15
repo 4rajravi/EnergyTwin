@@ -6,11 +6,16 @@ from .domain import BatterySpec, ForecastPoint, SimulationMetrics, SimulationPoi
 from .optimizer import baseline_schedule, demand_response_factor, optimized_schedule, rule_schedule
 
 
-def schedule_for(controller: str, forecast: list[ForecastPoint], battery: BatterySpec) -> list[float]:
+def schedule_for(
+    controller: str,
+    forecast: list[ForecastPoint],
+    battery: BatterySpec,
+    tariff: TariffSpec | None = None,
+) -> list[float]:
     if controller == "rule":
         return rule_schedule(forecast, battery)
     if controller == "optimized":
-        return optimized_schedule(forecast, battery)
+        return optimized_schedule(forecast, battery, tariff=tariff)
     return baseline_schedule(forecast, battery)
 
 
@@ -22,7 +27,7 @@ def simulate(
 ) -> tuple[list[SimulationPoint], SimulationMetrics]:
     battery = battery or BatterySpec()
     tariff = tariff or TariffSpec()
-    schedule = schedule_for(controller, forecast, battery)
+    schedule = schedule_for(controller, forecast, battery, tariff=tariff)
     soc = battery.initial_soc_kwh
     points: list[SimulationPoint] = []
     energy_cost = 0.0

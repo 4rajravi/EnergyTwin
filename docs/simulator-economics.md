@@ -44,6 +44,8 @@ The backend accepts the same assumptions through query parameters:
 /api/optimize?demand_charge=3.2&export_credit=0.32&battery_wear=0.018
 ```
 
+The optimized controller uses these economics while building the battery schedule. Higher demand charges increase the value of peak shaving. Higher battery wear makes the optimizer more conservative about cycling.
+
 ## Still Simplified
 
 This is not yet a full utility tariff model. Future additions can include:

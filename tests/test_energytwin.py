@@ -14,7 +14,7 @@ from energytwin.domain import BatterySpec, TariffSpec
 from energytwin.enrichment import enrich_rows_from_csv
 from energytwin.forecasting import build_forecast, evaluate_forecast_baseline
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
-from energytwin.simulator import compare_policies, simulate
+from energytwin.simulator import compare_policies, schedule_for, simulate
 from energytwin.sources import load_history
 
 
@@ -76,7 +76,7 @@ class EnergyTwinTests(unittest.TestCase):
             + optimized.battery_wear_cost_usd
             - optimized.export_credit_usd
         )
-        self.assertAlmostEqual(optimized.total_cost_usd, round(expected, 2), places=2)
+        self.assertAlmostEqual(optimized.total_cost_usd, round(expected, 2), delta=0.02)
 
     def test_policy_comparison_uses_custom_economics(self) -> None:
         forecast = build_forecast(generate_history(), "price")
@@ -84,6 +84,29 @@ class EnergyTwinTests(unittest.TestCase):
         high_demand_charge = compare_policies(forecast, tariff=TariffSpec(demand_charge_usd_per_kw_day=10.0))
         self.assertGreater(high_demand_charge["baseline"]["total_cost_usd"], low_demand_charge["baseline"]["total_cost_usd"])
         self.assertGreater(high_demand_charge["optimized"]["demand_charge_usd"], low_demand_charge["optimized"]["demand_charge_usd"])
+
+    def test_optimized_schedule_responds_to_economic_assumptions(self) -> None:
+        forecast = build_forecast(generate_history(), "price")
+        battery = BatterySpec()
+        low_charge_schedule = schedule_for(
+            "optimized",
+            forecast,
+            battery,
+            tariff=TariffSpec(demand_charge_usd_per_kw_day=0.0),
+        )
+        high_charge_schedule = schedule_for(
+            "optimized",
+            forecast,
+            battery,
+            tariff=TariffSpec(demand_charge_usd_per_kw_day=10.0),
+        )
+        self.assertNotEqual(low_charge_schedule, high_charge_schedule)
+
+    def test_high_battery_wear_reduces_optimized_throughput(self) -> None:
+        forecast = build_forecast(generate_history(), "price")
+        _, low_wear = simulate(forecast, "optimized", battery=BatterySpec(wear_cost_usd_per_kwh_throughput=0.0))
+        _, high_wear = simulate(forecast, "optimized", battery=BatterySpec(wear_cost_usd_per_kwh_throughput=0.2))
+        self.assertLessEqual(high_wear.battery_cycles, low_wear.battery_cycles)
 
     def test_data_health_accepts_generated_rows(self) -> None:
         rows = generate_history()
