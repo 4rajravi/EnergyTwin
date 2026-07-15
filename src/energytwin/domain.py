@@ -22,6 +22,13 @@ class BatterySpec:
     initial_soc_kwh: float = 160.0
     min_soc_kwh: float = 32.0
     max_soc_kwh: float = 304.0
+    wear_cost_usd_per_kwh_throughput: float = 0.018
+
+
+@dataclass(frozen=True)
+class TariffSpec:
+    demand_charge_usd_per_kw_day: float = 3.2
+    export_credit_fraction: float = 0.32
 
 
 @dataclass(frozen=True)
@@ -81,6 +88,10 @@ class SimulationPoint:
 @dataclass(frozen=True)
 class SimulationMetrics:
     total_cost_usd: float
+    energy_cost_usd: float
+    demand_charge_usd: float
+    export_credit_usd: float
+    battery_wear_cost_usd: float
     carbon_kg: float
     peak_grid_kw: float
     comfort_violation_hours: float

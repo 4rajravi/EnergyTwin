@@ -3,6 +3,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
 .venv/
 venv/
 .env
@@ -13,6 +16,11 @@ venv/
 .idea/
 .vscode/
 *.log
+
+build/
+dist/
+*.egg-info/
+node_modules/
 
 data/raw/*
 data/processed/*

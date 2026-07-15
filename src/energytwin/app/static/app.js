@@ -34,7 +34,7 @@ function policyCard(label, metrics) {
   return `<article class="policy">
     <span>${label}</span>
     <strong>${money(metrics.total_cost_usd)}</strong>
-    <small>${number(metrics.cost_savings_pct, "%")} cost saved, ${number(metrics.peak_reduction_pct, "%")} peak cut</small>
+    <small>${number(metrics.cost_savings_pct, "%")} saved, ${money(metrics.demand_charge_usd)} demand charge</small>
   </article>`;
 }
 
@@ -113,7 +113,7 @@ function render() {
     policyCard("Baseline", state.comparison.baseline),
     policyCard("Rule controller", state.comparison.rule),
     policyCard("Optimized controller", state.comparison.optimized),
-    metric("Comfort violations", number(state.comparison.optimized.comfort_violation_hours, " h"), "Optimized schedule"),
+    metric("Battery wear", money(state.comparison.optimized.battery_wear_cost_usd), `${number(state.comparison.optimized.battery_cycles, " cycles")} optimized`),
   ].join("");
 
   $("#modelMetrics").innerHTML = [
@@ -126,6 +126,7 @@ function render() {
 
   drawForecast();
   drawLive();
+  drawCostBreakdown();
   drawPolicy();
 }
 
@@ -183,6 +184,41 @@ function drawPolicy() {
       rect(svg, baseX + policyIndex * 58, 266 - height, 38, height, group[3]);
       label(svg, name, baseX + policyIndex * 58 - 4, 292, "chart-label");
     });
+  });
+}
+
+function drawCostBreakdown() {
+  const svg = $("#costBreakdownChart");
+  clear(svg);
+  const policies = [
+    ["Baseline", state.comparison.baseline],
+    ["Rule", state.comparison.rule],
+    ["Optimized", state.comparison.optimized],
+  ];
+  const components = [
+    ["energy_cost_usd", "Energy", "bar-cost"],
+    ["demand_charge_usd", "Demand", "bar-demand-charge"],
+    ["battery_wear_cost_usd", "Wear", "bar-battery-wear"],
+  ];
+  const maxTotal = Math.max(...policies.map(([, item]) => item.energy_cost_usd + item.demand_charge_usd + item.battery_wear_cost_usd));
+  const y = scale(0, maxTotal, 264, 34);
+  drawGrid(svg, y, maxTotal);
+  drawLegend(svg, [["Energy", 64, "var(--blue)"], ["Demand", 140, "var(--amber)"], ["Wear", 230, "var(--violet)"], ["Export credit", 294, "var(--red)"]]);
+
+  policies.forEach(([name, item], policyIndex) => {
+    const x = 170 + policyIndex * 245;
+    let stackTop = 264;
+    components.forEach(([field, , className]) => {
+      const height = 264 - y(item[field]);
+      rect(svg, x, stackTop - height, 86, height, className);
+      stackTop -= height;
+    });
+    if (item.export_credit_usd > 0) {
+      const creditHeight = 264 - y(item.export_credit_usd);
+      rect(svg, x + 94, 264 - creditHeight, 16, creditHeight, "bar-export-credit");
+    }
+    label(svg, name, x - 2, 292, "chart-label");
+    label(svg, money(item.total_cost_usd), x - 2, 312, "chart-label");
   });
 }
 

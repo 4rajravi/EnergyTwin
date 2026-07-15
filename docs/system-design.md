@@ -313,6 +313,7 @@ Inputs:
 - price
 - carbon intensity
 - battery spec
+- tariff spec
 - controller schedule
 
 Outputs:
@@ -320,15 +321,21 @@ Outputs:
 - grid import/export
 - battery state of charge
 - total cost
+- energy cost
+- demand charge
+- export credit
+- battery wear cost
 - carbon emissions
 - peak demand
 - comfort risk
 - battery cycles
 
+The dashboard exposes the cost components in the Scenario Lab so users can see whether a policy is saving money through energy arbitrage, peak reduction, or both.
+
 Future improvements:
 
 - tariff demand charges
-- battery degradation
+- richer battery degradation
 - HVAC thermal model
 - occupancy schedule
 - solar inverter limits

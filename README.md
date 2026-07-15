@@ -50,7 +50,7 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/enrichment.py`: timestamp-based joins for weather, solar, price, and carbon data.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.
 - `/api/forecast-evaluation`: local backtest metrics for the active baseline.
-- `src/energytwin/simulator.py`: battery, grid import/export, cost, carbon, and comfort simulation.
+- `src/energytwin/simulator.py`: battery, grid import/export, tariff cost breakdown, carbon, and comfort simulation.
 - `src/energytwin/optimizer.py`: baseline, rule, and optimized controller schedules.
 - `src/energytwin/server.py`: dependency-free HTTP API and static dashboard server.
 - `src/energytwin/app/static`: control-room dashboard.

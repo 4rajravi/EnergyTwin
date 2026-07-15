@@ -227,6 +227,18 @@ svg {
   fill: var(--blue);
 }
 
+.bar-demand-charge {
+  fill: var(--amber);
+}
+
+.bar-battery-wear {
+  fill: var(--violet);
+}
+
+.bar-export-credit {
+  fill: var(--red);
+}
+
 .bar-carbon {
   fill: var(--green);
 }

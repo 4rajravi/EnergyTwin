@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from .domain import BatterySpec, ForecastPoint, SimulationMetrics, SimulationPoint
+from .domain import BatterySpec, ForecastPoint, SimulationMetrics, SimulationPoint, TariffSpec
 from .optimizer import baseline_schedule, demand_response_factor, optimized_schedule, rule_schedule
 
 
@@ -18,12 +18,15 @@ def simulate(
     forecast: list[ForecastPoint],
     controller: str = "baseline",
     battery: BatterySpec | None = None,
+    tariff: TariffSpec | None = None,
 ) -> tuple[list[SimulationPoint], SimulationMetrics]:
     battery = battery or BatterySpec()
+    tariff = tariff or TariffSpec()
     schedule = schedule_for(controller, forecast, battery)
     soc = battery.initial_soc_kwh
     points: list[SimulationPoint] = []
-    total_cost = 0.0
+    energy_cost = 0.0
+    export_credit = 0.0
     carbon = 0.0
     peak = 0.0
     comfort_hours = 0.0
@@ -47,7 +50,8 @@ def simulate(
         net = adjusted_demand - point.solar_kw - battery_kw
         grid_import = max(0.0, net)
         grid_export = max(0.0, -net)
-        total_cost += grid_import * point.price_usd_per_kwh - grid_export * point.price_usd_per_kwh * 0.32
+        energy_cost += grid_import * point.price_usd_per_kwh
+        export_credit += grid_export * point.price_usd_per_kwh * tariff.export_credit_fraction
         carbon += grid_import * point.carbon_kg_per_kwh
         peak = max(peak, grid_import)
         import_kwh += grid_import
@@ -70,8 +74,16 @@ def simulate(
             )
         )
 
+    demand_charge = peak * tariff.demand_charge_usd_per_kw_day
+    battery_wear_cost = throughput * battery.wear_cost_usd_per_kwh_throughput
+    total_cost = energy_cost + demand_charge + battery_wear_cost - export_credit
+
     metrics = SimulationMetrics(
         total_cost_usd=round(total_cost, 2),
+        energy_cost_usd=round(energy_cost, 2),
+        demand_charge_usd=round(demand_charge, 2),
+        export_credit_usd=round(export_credit, 2),
+        battery_wear_cost_usd=round(battery_wear_cost, 2),
         carbon_kg=round(carbon, 2),
         peak_grid_kw=round(peak, 2),
         comfort_violation_hours=round(comfort_hours, 2),
@@ -112,6 +124,10 @@ def _comfort_risk(point: ForecastPoint, adjusted_demand: float, controller: str)
 def _metrics_dict(metrics: SimulationMetrics, baseline: SimulationMetrics) -> dict[str, float]:
     return {
         "total_cost_usd": metrics.total_cost_usd,
+        "energy_cost_usd": metrics.energy_cost_usd,
+        "demand_charge_usd": metrics.demand_charge_usd,
+        "export_credit_usd": metrics.export_credit_usd,
+        "battery_wear_cost_usd": metrics.battery_wear_cost_usd,
         "carbon_kg": metrics.carbon_kg,
         "peak_grid_kw": metrics.peak_grid_kw,
         "comfort_violation_hours": metrics.comfort_violation_hours,

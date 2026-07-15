@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from energytwin.data import generate_history
 from energytwin.adapters.building_data_genome import convert_bdg_long_csv, convert_bdg_wide_csv
-from energytwin.domain import BatterySpec
+from energytwin.domain import BatterySpec, TariffSpec
 from energytwin.enrichment import enrich_rows_from_csv
 from energytwin.forecasting import build_forecast, evaluate_forecast_baseline
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
@@ -54,6 +54,21 @@ class EnergyTwinTests(unittest.TestCase):
         _, optimized = simulate(forecast, "optimized")
         self.assertLessEqual(optimized.total_cost_usd, baseline.total_cost_usd)
         self.assertLessEqual(optimized.peak_grid_kw, baseline.peak_grid_kw)
+
+    def test_simulation_cost_breakdown_includes_tariff_and_battery_wear(self) -> None:
+        forecast = build_forecast(generate_history(), "price")
+        _, baseline = simulate(forecast, "baseline", tariff=TariffSpec(demand_charge_usd_per_kw_day=5.0))
+        _, optimized = simulate(forecast, "optimized", tariff=TariffSpec(demand_charge_usd_per_kw_day=5.0))
+        self.assertGreater(baseline.demand_charge_usd, 0)
+        self.assertEqual(baseline.battery_wear_cost_usd, 0)
+        self.assertGreater(optimized.battery_wear_cost_usd, 0)
+        expected = (
+            optimized.energy_cost_usd
+            + optimized.demand_charge_usd
+            + optimized.battery_wear_cost_usd
+            - optimized.export_credit_usd
+        )
+        self.assertAlmostEqual(optimized.total_cost_usd, round(expected, 2), places=2)
 
     def test_data_health_accepts_generated_rows(self) -> None:
         rows = generate_history()
