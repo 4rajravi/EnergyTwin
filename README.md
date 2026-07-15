@@ -7,7 +7,7 @@ This first build is intentionally shippable without cloud services. The core is 
 ## Run
 
 ```bash
-python3 run.py
+python run.py
 ```
 
 Open `http://127.0.0.1:8787`.
@@ -15,7 +15,21 @@ Open `http://127.0.0.1:8787`.
 ## Test
 
 ```bash
-python3 -m unittest discover -s tests
+python -m unittest discover -s tests
+```
+
+## Verify, Commit, And Push
+
+Run checks, stage all current changes, and commit:
+
+```bash
+python scripts/ship.py -m "your commit message"
+```
+
+Run checks, commit, and push the current branch:
+
+```bash
+python scripts/ship.py -m "your commit message" --push
 ```
 
 ## Import Data
@@ -23,25 +37,25 @@ python3 -m unittest discover -s tests
 Create a validated demo CSV:
 
 ```bash
-python3 scripts/import_dataset.py --make-demo --output data/processed/current-meter.csv
+python scripts/import_dataset.py --make-demo --output data/processed/current-meter.csv
 ```
 
 Import a local CSV:
 
 ```bash
-python3 scripts/import_dataset.py data/raw/my-building.csv --output data/processed/current-meter.csv
+python scripts/import_dataset.py data/raw/my-building.csv --output data/processed/current-meter.csv
 ```
 
 Prepare the downloaded Building Data Genome 2 dataset:
 
 ```bash
-python3 scripts/prepare_default_real_data.py
+python scripts/prepare_default_real_data.py
 ```
 
 Or prepare it manually:
 
 ```bash
-python3 scripts/prepare_public_dataset.py data/raw/building-meter.csv \
+python scripts/prepare_public_dataset.py data/raw/building-meter.csv \
   --format bdg-wide \
   --building-column building_a \
   --output data/processed/current-meter.csv
@@ -58,13 +72,13 @@ See [docs/advanced-ops.md](docs/advanced-ops.md) for multi-building, MLflow, Pre
 Run a scheduled local MLOps loop:
 
 ```bash
-python3 scripts/schedule_local_pipeline.py --source demo --scenario price --interval-minutes 60 --forever
+python scripts/schedule_local_pipeline.py --source demo --scenario price --interval-minutes 60 --forever
 ```
 
 Train the local forecast artifact:
 
 ```bash
-python3 scripts/train_forecast_model.py --source demo --scenario price
+python scripts/train_forecast_model.py --source demo --scenario price
 ```
 
 Training writes a candidate model first and promotes it to `models/active-forecast-model.json` only if it beats the weighted baseline by the configured metric threshold.
@@ -75,7 +89,7 @@ The MLOps dashboard also shows recent run history, forecast error trend, best ru
 Generate a macOS daily launchd job:
 
 ```bash
-python3 scripts/make_daily_launchd.py --hour 7 --minute 0 --print
+python scripts/make_daily_launchd.py --hour 7 --minute 0 --print
 ```
 
 ## Project Map
