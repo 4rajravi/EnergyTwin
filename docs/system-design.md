@@ -42,12 +42,12 @@ flowchart LR
     end
 
     subgraph API
-        D1[/api/data-sources]
-        D2[/api/data-health]
-        D3[/api/forecast]
-        D4[/api/simulate]
-        D5[/api/optimize]
-        D6[/api/model-status]
+        D1["/api/data-sources"]
+        D2["/api/data-health"]
+        D3["/api/forecast"]
+        D4["/api/simulate"]
+        D5["/api/optimize"]
+        D6["/api/model-status"]
     end
 
     subgraph UI
@@ -59,8 +59,8 @@ flowchart LR
 
     A1 --> B1
     A2 --> B1
-    A3 -. later .-> B1
-    A4 -. later .-> B4
+    A3 -. "later" .-> B1
+    A4 -. "later" .-> B4
     B1 --> B2
     B2 --> B3
     B2 --> C1
@@ -92,14 +92,14 @@ sequenceDiagram
     participant Simulator
     participant Optimizer
 
-    Browser->>Server: GET /api/forecast?source=demo&scenario=price
+    Browser->>Server: GET forecast API with source demo and scenario price
     Server->>Sources: load_history(source, scenario)
     Sources-->>Server: hourly rows
     Server->>Forecast: build_forecast(rows, scenario)
     Forecast-->>Server: 24h forecast
     Server-->>Browser: forecast JSON
 
-    Browser->>Server: GET /api/optimize?source=demo&scenario=price
+    Browser->>Server: GET optimize API with source demo and scenario price
     Server->>Sources: load_history(source, scenario)
     Server->>Forecast: build_forecast(rows, scenario)
     Server->>Simulator: simulate baseline/rule/optimized
@@ -264,8 +264,8 @@ flowchart TD
     B --> C[Train baseline + TFT]
     C --> D[Evaluate MAE/RMSE/sMAPE/pinball]
     D --> E{Better than current?}
-    E -- yes --> F[Register model]
-    E -- no --> G[Keep current model]
+    E -- "yes" --> F[Register model]
+    E -- "no" --> G[Keep current model]
     F --> H[Serve forecast]
     H --> I[Monitor error and drift]
 ```
