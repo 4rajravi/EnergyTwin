@@ -94,6 +94,7 @@
 
     <section id="mlops" class="panel">
       <div class="metric-grid" id="modelMetrics"></div>
+      <div class="metric-grid" id="runMetrics"></div>
       <div class="ops-layout">
         <article>
           <h2>Pipeline</h2>
@@ -106,9 +107,14 @@
           </ol>
         </article>
         <article>
+          <h2>Run History</h2>
+          <ul class="run-history" id="runHistory"></ul>
+        </article>
+        <article>
           <h2>Data Plane</h2>
           <ul class="data-plane">
             <li><strong>Now</strong><span>Local JSON APIs and deterministic demo data</span></li>
+            <li><strong>Runs</strong><span>SQLite stores local experiment history</span></li>
             <li><strong>DB</strong><span>Postgres or TimescaleDB for meter history and forecasts</span></li>
             <li><strong>Cache</strong><span>Redis for repeated forecast and scenario responses</span></li>
             <li><strong>Stream</strong><span>Kafka plus Flink only after live telemetry scale requires it</span></li>

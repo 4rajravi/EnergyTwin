@@ -24,6 +24,7 @@ node_modules/
 
 data/raw/*
 data/processed/*
+data/local/*
 models/*
 mlruns/*
 

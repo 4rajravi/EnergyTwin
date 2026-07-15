@@ -65,8 +65,8 @@ flowchart TD
 | 3. Weather and solar enrichment | NASA POWER adapter ready | Add weather/solar/price/carbon columns by timestamp |
 | 4. Forecasting upgrade | Baseline metrics ready | Replace seasonal baseline with stronger models |
 | 5. Simulator and optimizer upgrade | Configurable economics ready | More realistic battery, tariff, comfort, HVAC behavior |
-| 6. MLOps pipeline | Not started | MLflow, pipeline runs, evaluation, drift monitoring |
-| 7. Database and cache | Not started | Postgres/TimescaleDB and Redis |
+| 6. MLOps pipeline | Local scheduler ready | MLflow, retraining, drift monitoring |
+| 7. Database and cache | SQLite started | Postgres/TimescaleDB and Redis |
 | 8. Streaming | Deferred | Kafka/Flink only if live telemetry needs it |
 | 9. RL-ready environment | Deferred | Gymnasium-style interface for future TD-MPC2 |
 
@@ -77,7 +77,7 @@ flowchart TD
 | First data layer | demo only, CSV, DuckDB, Postgres | CSV + validation | Teaches schema discipline without infrastructure overhead |
 | Forecast model now | simple baseline, TFT immediately | simple baseline contract | Lets UI/simulator stabilize before training complexity |
 | Streaming now | none, Kafka, Kafka + Flink | none | No live telemetry yet |
-| Database now | files, DuckDB, Postgres/TimescaleDB | files | Faster iteration while schema is still changing |
+| Database now | files, SQLite, DuckDB, Postgres/TimescaleDB | SQLite for run history | Small persistence step without committing the whole app to a database yet |
 | Public meter data | downloader, adapter, manual CSV only | adapter | Supports real data shape without network or large files |
 | Weather enrichment | NASA POWER first, manual join, placeholders | manual join | Teaches the join contract before adding an external API |
 | Forecasting upgrade | jump to deep learning, measured baseline first | measured baseline | Gives us metrics before adding heavier ML |
@@ -86,21 +86,24 @@ flowchart TD
 | Scenario assumptions | fixed presets, API params, dashboard controls | dashboard controls | Lets users tune weather, price, EV, and comfort assumptions |
 | Optimizer economics | fixed schedule scoring, tariff-aware schedule | tariff-aware schedule | Policy actions now respond to tariff and wear assumptions |
 | Weather source | manual CSV only, NASA POWER adapter | NASA POWER adapter | Automates temperature and solar enrichment while preserving CSV join path |
+| MLOps first step | no tracking, local JSON, MLflow now | local JSON | Establishes run contract before adding MLflow/Prefect |
+| Run history | latest file only, SQLite, MLflow | SQLite | Lets dashboard/API compare recent local runs without new services |
+| Scheduler | manual command, cron, Prefect | project-owned scheduler script | Gives repeatable local automation before installing system cron or adding Prefect |
 
 ## Next Step
 
-Recommended next step: choose whether to improve the forecasting model or improve the simulator.
+Recommended next step: choose whether to improve the forecasting model or add retraining infrastructure.
 
 That means:
 
 1. Add a stronger statistical forecasting baseline, or
-2. Improve simulator realism with tariff demand charges and battery degradation, or
-3. Add NASA POWER as an automated weather producer.
+2. Add a trainable model artifact and promotion rule, or
+3. Move the local scheduler into Prefect.
 
 Options:
 
 - **Forecasting baseline**: teaches evaluation and makes the AI part more real.
-- **Simulator improvements**: makes policy comparison more credible.
-- **NASA POWER adapter**: automates weather enrichment now that the join contract exists.
+- **Trainable model artifact**: unlocks real retraining and promotion decisions.
+- **Prefect scheduler**: adds retries, logs, and pipeline history.
 
-My recommendation: improve the forecasting baseline next, then add NASA POWER.
+My recommendation: improve the forecasting baseline next, then add a trainable model artifact.

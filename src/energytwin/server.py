@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 from .data import available_scenarios, get_scenario
 from .domain import BatterySpec, TariffSpec, serialize
 from .forecasting import build_forecast, evaluate_forecast_baseline, model_status
+from .mlops import list_local_runs, read_latest_local_run
 from .simulator import compare_policies, simulate
 from .sources import available_data_sources, current_data_health, load_history
 
@@ -82,6 +83,11 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         elif path == "/api/model-status":
             metrics = evaluate_forecast_baseline(history, model_name=model_name)
             payload = model_status(len(history), metrics)
+            payload["latest_local_run"] = read_latest_local_run()
+        elif path == "/api/mlops-run":
+            payload = read_latest_local_run() or {"error": "no local run found"}
+        elif path == "/api/mlops-runs":
+            payload = {"runs": list_local_runs(limit=_int_query(query, "limit", 20, 1, 100))}
         elif path == "/api/forecast-evaluation":
             payload = serialize(evaluate_forecast_baseline(history, model_name=model_name))
         elif path == "/api/data-health":
@@ -177,6 +183,15 @@ def _float_query(query: dict[str, list[str]], key: str, default: float, minimum:
     raw = query.get(key, [str(default)])[0]
     try:
         value = float(raw)
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _int_query(query: dict[str, list[str]], key: str, default: int, minimum: int, maximum: int) -> int:
+    raw = query.get(key, [str(default)])[0]
+    try:
+        value = int(raw)
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))

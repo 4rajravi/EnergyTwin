@@ -287,7 +287,7 @@ svg {
 
 .ops-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -296,7 +296,8 @@ svg {
 }
 
 .pipeline,
-.data-plane {
+.data-plane,
+.run-history {
   display: grid;
   gap: 10px;
   margin: 14px 0 0;
@@ -305,7 +306,8 @@ svg {
 }
 
 .pipeline li,
-.data-plane li {
+.data-plane li,
+.run-history li {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -314,12 +316,21 @@ svg {
 }
 
 .pipeline span,
-.data-plane span {
+.data-plane span,
+.run-history span {
   color: var(--muted);
 }
 
+.run-history small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .pipeline strong,
-.data-plane strong {
+.data-plane strong,
+.run-history strong {
   font-size: 13px;
   text-align: right;
 }
@@ -359,12 +370,14 @@ svg {
   }
 
   .pipeline li,
-  .data-plane li {
+  .data-plane li,
+  .run-history li {
     display: grid;
   }
 
   .pipeline strong,
-  .data-plane strong {
+  .data-plane strong,
+  .run-history strong {
     text-align: left;
   }
 }

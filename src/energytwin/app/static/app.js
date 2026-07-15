@@ -7,6 +7,8 @@ const state = {
   model: null,
   evaluation: null,
   dataHealth: null,
+  mlopsRun: null,
+  mlopsRuns: [],
   economics: {
     demandCharge: 3.2,
     exportCredit: 0.32,
@@ -143,13 +145,15 @@ function syncScenarioControlsToPreset() {
 async function refresh() {
   const economics = economicsQuery();
   const scenario = scenarioQuery();
-  const [forecastData, optimizedData, comparisonData, modelData, evaluationData, dataHealth] = await Promise.all([
+  const [forecastData, optimizedData, comparisonData, modelData, evaluationData, dataHealth, mlopsRun, mlopsRuns] = await Promise.all([
     getJson(`/api/forecast?scenario=${state.scenario}&source=${state.source}&${scenario}`),
     getJson(`/api/simulate?scenario=${state.scenario}&source=${state.source}&controller=optimized&${scenario}&${economics}`),
     getJson(`/api/optimize?scenario=${state.scenario}&source=${state.source}&${scenario}&${economics}`),
     getJson(`/api/model-status?source=${state.source}&scenario=${state.scenario}&${scenario}`),
     getJson(`/api/forecast-evaluation?source=${state.source}&scenario=${state.scenario}&${scenario}`),
     getJson(`/api/data-health?scenario=${state.scenario}&source=${state.source}&${scenario}`),
+    getJson("/api/mlops-run"),
+    getJson("/api/mlops-runs?limit=5"),
   ]);
   state.forecast = forecastData.forecast;
   state.optimized = optimizedData;
@@ -157,6 +161,8 @@ async function refresh() {
   state.model = modelData;
   state.evaluation = evaluationData;
   state.dataHealth = dataHealth;
+  state.mlopsRun = mlopsRun.error ? null : mlopsRun;
+  state.mlopsRuns = mlopsRuns.runs || [];
   render();
 }
 
@@ -214,10 +220,50 @@ function render() {
     metric("Data health", `${state.dataHealth.valid_rows}/${state.dataHealth.row_count}`, `${state.dataHealth.invalid_rows} invalid rows`),
   ].join("");
 
+  renderRunMetrics();
+  renderRunHistory();
   drawForecast();
   drawLive();
   drawCostBreakdown();
   drawPolicy();
+}
+
+function renderRunMetrics() {
+  if (!state.mlopsRun) {
+    $("#runMetrics").innerHTML = [
+      metric("Latest run", "None", "Run scripts/run_local_pipeline.py"),
+      metric("Run scenario", "-", "No persisted report"),
+      metric("Run MAE", "-", "No persisted report"),
+      metric("Optimized savings", "-", "No persisted report"),
+    ].join("");
+    return;
+  }
+  const run = state.mlopsRun;
+  $("#runMetrics").innerHTML = [
+    metric("Latest run", shortRunId(run.run_id), run.created_at.replace("T", " ").slice(0, 19)),
+    metric("Run scenario", run.config.scenario_key, run.config.source_key),
+    metric("Run MAE", number(run.forecast_metrics.mae_kw, " kW"), `sMAPE ${number(run.forecast_metrics.smape * 100, "%")}`),
+    metric("Optimized savings", number(run.policy_comparison.optimized.cost_savings_pct, "%"), `${money(run.policy_comparison.optimized.total_cost_usd)} total`),
+  ].join("");
+}
+
+function renderRunHistory() {
+  const list = $("#runHistory");
+  if (!state.mlopsRuns.length) {
+    list.innerHTML = `<li><span>No runs yet</span><strong>Run local pipeline</strong></li>`;
+    return;
+  }
+  list.innerHTML = state.mlopsRuns
+    .map((run) => `<li>
+      <span>${shortRunId(run.run_id)}<small>${run.created_at.replace("T", " ").slice(0, 19)}</small></span>
+      <strong>${run.scenario_key} / ${number(run.mae_kw, " kW")}</strong>
+    </li>`)
+    .join("");
+}
+
+function shortRunId(runId) {
+  const parts = String(runId).split("-");
+  return parts.slice(0, 2).join("-");
 }
 
 function drawForecast() {

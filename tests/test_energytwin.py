@@ -15,8 +15,11 @@ from energytwin.domain import BatterySpec, TariffSpec
 from energytwin.enrichment import enrich_rows_from_csv
 from energytwin.forecasting import build_forecast, evaluate_forecast_baseline
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
+from energytwin.mlops import LocalRunConfig, read_latest_local_run, run_local_experiment
+from energytwin.scheduler import LocalScheduleConfig, run_local_schedule
 from energytwin.simulator import compare_policies, schedule_for, simulate
 from energytwin.sources import load_history
+from energytwin.storage import latest_run_report, list_run_summaries, save_run_report
 
 
 class EnergyTwinTests(unittest.TestCase):
@@ -242,6 +245,76 @@ class EnergyTwinTests(unittest.TestCase):
             self.assertEqual(enriched[1]["solar_kw"], 4.0)
         finally:
             target.unlink(missing_ok=True)
+
+    def test_local_mlops_run_writes_report(self) -> None:
+        output_dir = ROOT / "mlruns" / "test-local"
+        db_path = ROOT / "data" / "processed" / "test-local-runs.sqlite3"
+        report_path = output_dir / "latest.json"
+        try:
+            report = run_local_experiment(LocalRunConfig(scenario_key="price"), output_dir=output_dir, db_path=db_path)
+            self.assertEqual(report["config"]["scenario_key"], "price")
+            self.assertIn("forecast_metrics", report)
+            self.assertIn("policy_comparison", report)
+            self.assertTrue(report_path.exists())
+            latest = read_latest_local_run(output_dir=output_dir, db_path=db_path)
+            self.assertIsNotNone(latest)
+            self.assertEqual(latest["run_id"], report["run_id"])
+            summaries = list_run_summaries(db_path=db_path)
+            self.assertEqual(summaries[0]["run_id"], report["run_id"])
+            self.assertEqual(summaries[0]["scenario_key"], "price")
+        finally:
+            db_path.unlink(missing_ok=True)
+            for path in output_dir.glob("*.json"):
+                path.unlink(missing_ok=True)
+            output_dir.rmdir()
+
+    def test_storage_roundtrips_run_report(self) -> None:
+        db_path = ROOT / "data" / "processed" / "test-storage-runs.sqlite3"
+        report = run_local_experiment(
+            LocalRunConfig(scenario_key="normal"),
+            output_dir=ROOT / "mlruns" / "test-storage",
+            db_path=None,
+        )
+        try:
+            save_run_report(report, db_path=db_path)
+            latest = latest_run_report(db_path=db_path)
+            self.assertIsNotNone(latest)
+            self.assertEqual(latest["run_id"], report["run_id"])
+            summaries = list_run_summaries(limit=5, db_path=db_path)
+            self.assertEqual(len(summaries), 1)
+            self.assertEqual(summaries[0]["model_name"], "weighted-baseline-v1")
+            self.assertGreater(summaries[0]["mae_kw"], 0)
+        finally:
+            db_path.unlink(missing_ok=True)
+            output_dir = ROOT / "mlruns" / "test-storage"
+            for path in output_dir.glob("*.json"):
+                path.unlink(missing_ok=True)
+            output_dir.rmdir()
+
+    def test_local_scheduler_runs_pipeline_multiple_times(self) -> None:
+        output_dir = ROOT / "mlruns" / "test-scheduler"
+        db_path = ROOT / "data" / "processed" / "test-scheduler-runs.sqlite3"
+        slept = []
+        try:
+            reports = run_local_schedule(
+                LocalScheduleConfig(
+                    run_config=LocalRunConfig(scenario_key="price"),
+                    interval_seconds=0.01,
+                    max_runs=2,
+                    output_dir=output_dir,
+                    db_path=db_path,
+                ),
+                sleep_fn=lambda seconds: slept.append(seconds),
+            )
+            self.assertEqual(len(reports), 2)
+            self.assertEqual(slept, [0.01])
+            self.assertNotEqual(reports[0]["run_id"], reports[1]["run_id"])
+            self.assertEqual(len(list_run_summaries(db_path=db_path)), 2)
+        finally:
+            db_path.unlink(missing_ok=True)
+            for path in output_dir.glob("*.json"):
+                path.unlink(missing_ok=True)
+            output_dir.rmdir()
 
 
 if __name__ == "__main__":

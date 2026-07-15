@@ -49,6 +49,7 @@ flowchart LR
         D5["/api/optimize"]
         D6["/api/model-status"]
         D7["/api/forecast-evaluation"]
+        D8["/api/mlops-run(s)"]
     end
 
     subgraph UI
@@ -80,6 +81,7 @@ flowchart LR
     D5 --> E3
     D6 --> E4
     D7 --> E4
+    D8 --> E4
 ```
 
 ## 3. Current Runtime Design
@@ -121,6 +123,9 @@ sequenceDiagram
 | Public-data adapters | `src/energytwin/adapters` | converts external dataset shapes into the internal schema |
 | Enrichment | `src/energytwin/enrichment.py` | joins weather, solar, price, and carbon data by timestamp |
 | NASA POWER adapter | `src/energytwin/adapters/nasa_power.py` | converts hourly NASA POWER JSON into enrichment CSV rows |
+| Local MLOps | `src/energytwin/mlops.py` | writes dependency-free local experiment reports |
+| Local scheduler | `src/energytwin/scheduler.py` | repeats local MLOps runs on an interval |
+| Local storage | `src/energytwin/storage.py` | stores local experiment history in SQLite |
 | Forecasting | `src/energytwin/forecasting.py` | returns a 24-hour forecast contract |
 | Simulator | `src/energytwin/simulator.py` | simulates grid import/export, battery, cost, carbon, comfort |
 | Optimizer | `src/energytwin/optimizer.py` | creates baseline, rule, and optimized schedules |
@@ -158,6 +163,8 @@ Current API endpoints:
 | `/api/simulate` | simulate one controller |
 | `/api/optimize` | compare baseline, rule, and optimized policies |
 | `/api/model-status` | show model and MLOps state |
+| `/api/mlops-run` | return the latest local experiment report |
+| `/api/mlops-runs` | return recent local experiment summaries |
 
 Current query parameters:
 
@@ -174,6 +181,7 @@ Current query parameters:
 | `demand_charge` | simulate, optimize | `3.2` |
 | `export_credit` | simulate, optimize | `0.32` |
 | `battery_wear` | simulate, optimize | `0.018` |
+| `limit` | mlops-runs | `5` |
 
 ## 7. Storage Design
 
@@ -184,13 +192,16 @@ Use local files:
 ```text
 data/raw/                 manually placed input files
 data/processed/           validated project-ready files
+data/local/energytwin.sqlite3
 models/                   future trained model artifacts
 mlruns/                   future MLflow runs
 ```
 
+The local SQLite database stores MLOps run summaries and full report payloads. JSON reports are still written under `mlruns/local` for easy manual inspection.
+
 ### Next
 
-Add DuckDB or SQLite only if local analytics becomes painful.
+Add DuckDB if local analytical queries across large imported meter datasets become painful.
 
 ### Production Direction
 
@@ -204,7 +215,7 @@ Use Postgres/TimescaleDB for:
 - model metadata
 - data quality records
 
-Do not add the database until the core row schema stabilizes.
+The SQLite storage boundary should migrate to Postgres/TimescaleDB once the run, forecast, and simulation schemas stabilize.
 
 ## 8. Cache Design
 
@@ -262,6 +273,12 @@ flowchart LR
 
 Current model is a baseline forecast contract.
 
+Current local MLOps:
+
+- `scripts/run_local_pipeline.py` writes JSON run reports
+- reports include data health, forecast metrics, and policy comparison
+- `/api/mlops-run` exposes the latest local report
+
 Future MLOps components:
 
 | tool | role |
@@ -270,6 +287,23 @@ Future MLOps components:
 | Prefect | scheduled ingest/train/evaluate pipelines |
 | Evidently | drift and forecast-performance monitoring |
 | DVC or object storage | dataset/model artifact versioning |
+
+Current scheduled local flow:
+
+```mermaid
+flowchart LR
+    A[Local timer script] --> B[Load source data]
+    B --> C[Validate data health]
+    C --> D[Forecast]
+    D --> E[Evaluate]
+    D --> F[Simulate and optimize]
+    E --> G[Write JSON report]
+    F --> G
+    G --> H[Write SQLite run history]
+    H --> I[Dashboard MLOps panel]
+```
+
+The scheduler does not retrain yet. It reruns prediction, evaluation, and optimization using the active forecasting contract.
 
 Training flow later:
 
