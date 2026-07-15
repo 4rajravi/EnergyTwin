@@ -21,6 +21,7 @@ python3 -m unittest discover -s tests
 ## MVP Architecture
 
 - `src/energytwin/data.py`: deterministic demo data and scenario generation.
+- `src/energytwin/ingestion.py`: local CSV ingestion, schema checks, and data-health validation.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.
 - `src/energytwin/simulator.py`: battery, grid import/export, cost, carbon, and comfort simulation.
 - `src/energytwin/optimizer.py`: baseline, rule, and optimized controller schedules.
@@ -38,3 +39,13 @@ For the MVP, use local files and in-memory computation.
 - MLOps: add MLflow for experiment tracking/model registry, Prefect for pipelines, and Evidently for monitoring.
 
 TD-MPC2 is not in the critical path. The simulator and controller interfaces are shaped so a Gymnasium-style RL environment can be added later.
+
+## Learning Checkpoints
+
+Decision 1: Data layer.
+
+- Fast MVP: local CSV files and strict validation. This is what the project uses now.
+- Strong local analytics: DuckDB over Parquet files.
+- Production path: Postgres/TimescaleDB for meter readings, forecasts, simulation runs, and model metadata.
+
+Recommendation: start with local CSV validation, then move to DuckDB or TimescaleDB after real public data is wired in.

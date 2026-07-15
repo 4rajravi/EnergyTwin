@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 from .data import available_scenarios, generate_history, get_scenario
 from .domain import serialize
 from .forecasting import build_forecast, model_status
+from .ingestion import data_health
 from .simulator import compare_policies, simulate
 
 
@@ -71,6 +72,8 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
             }
         elif path == "/api/model-status":
             payload = model_status(len(history))
+        elif path == "/api/data-health":
+            payload = serialize(data_health(history, source=f"demo:{scenario_key}"))
         else:
             self._json({"error": "not found"}, status=404)
             return

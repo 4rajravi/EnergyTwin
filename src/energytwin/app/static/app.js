@@ -4,6 +4,7 @@ const state = {
   optimized: null,
   comparison: null,
   model: null,
+  dataHealth: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -57,16 +58,18 @@ async function loadScenarios() {
 }
 
 async function refresh() {
-  const [forecastData, optimizedData, comparisonData, modelData] = await Promise.all([
+  const [forecastData, optimizedData, comparisonData, modelData, dataHealth] = await Promise.all([
     getJson(`/api/forecast?scenario=${state.scenario}`),
     getJson(`/api/simulate?scenario=${state.scenario}&controller=optimized`),
     getJson(`/api/optimize?scenario=${state.scenario}`),
     getJson("/api/model-status"),
+    getJson(`/api/data-health?scenario=${state.scenario}`),
   ]);
   state.forecast = forecastData.forecast;
   state.optimized = optimizedData;
   state.comparison = comparisonData.comparison;
   state.model = modelData;
+  state.dataHealth = dataHealth;
   render();
 }
 
@@ -100,7 +103,7 @@ function render() {
     metric("Active model", state.model.active_model, state.model.stage),
     metric("Target model", state.model.target_model, `${state.model.forecast_horizon_hours}h horizon`),
     metric("MAE", number(state.model.mae_kw, " kW"), `sMAPE ${number(state.model.smape * 100, "%")}`),
-    metric("Registry", state.model.registry, `Drift ${state.model.drift_status}`),
+    metric("Data health", `${state.dataHealth.valid_rows}/${state.dataHealth.row_count}`, `${state.dataHealth.invalid_rows} invalid rows`),
   ].join("");
 
   drawForecast();

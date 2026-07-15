@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from energytwin.data import generate_history
 from energytwin.domain import BatterySpec
 from energytwin.forecasting import build_forecast
+from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
 from energytwin.simulator import simulate
 
 
@@ -35,6 +36,29 @@ class EnergyTwinTests(unittest.TestCase):
         _, optimized = simulate(forecast, "optimized")
         self.assertLessEqual(optimized.total_cost_usd, baseline.total_cost_usd)
         self.assertLessEqual(optimized.peak_grid_kw, baseline.peak_grid_kw)
+
+    def test_data_health_accepts_generated_rows(self) -> None:
+        rows = generate_history()
+        health = data_health(rows)
+        self.assertEqual(health.row_count, 168)
+        self.assertEqual(health.invalid_rows, 0)
+        validate_rows(rows)
+
+    def test_data_validation_rejects_bad_rows(self) -> None:
+        rows = generate_history(hours=2)
+        rows[1]["timestamp"] = rows[0]["timestamp"]
+        with self.assertRaises(DataValidationError):
+            validate_rows(rows)
+
+    def test_demo_csv_roundtrip(self) -> None:
+        target = ROOT / "data" / "processed" / "test-demo.csv"
+        try:
+            write_demo_csv(target, hours=4)
+            rows = load_meter_csv(target)
+            self.assertEqual(len(rows), 4)
+            self.assertEqual(data_health(rows, source=str(target)).invalid_rows, 0)
+        finally:
+            target.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
