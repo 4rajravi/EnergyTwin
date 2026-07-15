@@ -5,12 +5,22 @@ from datetime import datetime, timedelta
 
 from .data import PROFILE, get_scenario, price, solar_shape, weather_temp
 from .domain import ForecastMetrics, ForecastPoint, Scenario
-from .model_artifacts import TRAINED_HOURLY_MODEL, forecast_model_summary, load_forecast_model, train_hourly_forecast_model
+from .model_artifacts import (
+    TRAINED_HOURLY_MODEL,
+    TRAINED_REGRESSION_MODEL,
+    forecast_model_summary,
+    is_trainable_model,
+    load_forecast_model,
+    predict_regression_demand,
+    predict_regression_solar,
+    train_forecast_model_artifact,
+)
 
 
 MODEL_SEASONAL = "seasonal"
 MODEL_WEIGHTED = "weighted-baseline-v1"
 MODEL_TRAINED_HOURLY = TRAINED_HOURLY_MODEL
+MODEL_TRAINED_REGRESSION = TRAINED_REGRESSION_MODEL
 
 
 def _hourly_average(history: list[dict], field: str, hour: int) -> float:
@@ -27,8 +37,9 @@ def build_forecast(
     model_artifact: dict | None = None,
 ) -> list[ForecastPoint]:
     scenario = scenario or get_scenario(scenario_key)
-    if model_name == MODEL_TRAINED_HOURLY and model_artifact is None:
-        model_artifact = load_forecast_model() or train_hourly_forecast_model(history)
+    if is_trainable_model(model_name) and model_artifact is None:
+        loaded_artifact = load_forecast_model()
+        model_artifact = loaded_artifact if loaded_artifact and loaded_artifact.get("model_name") == model_name else train_forecast_model_artifact(history, model_name)
     last_ts = datetime.fromisoformat(str(history[-1]["timestamp"]))
     points: list[ForecastPoint] = []
 
@@ -37,7 +48,8 @@ def build_forecast(
         hour = ts.hour
         day_index = (len(history) + step) // 24
         temp = weather_temp(hour, day_index, scenario)
-        baseline = _predict_demand(history, hour, temp, model_name, model_artifact=model_artifact)
+        scenario_solar = PROFILE.solar_kwp * solar_shape(hour) * (1 - scenario.cloud_cover * 0.82)
+        baseline = _predict_demand(history, hour, temp, model_name, model_artifact=model_artifact, scenario_solar_kw=scenario_solar)
         cooling_delta = max(0.0, temp - 22.0) * 9.5
         ev = scenario.ev_spike_kw if 17 <= hour <= 20 else 0.0
         demand = max(PROFILE.base_kw, baseline + _scenario_demand_adjustment(model_name, cooling_delta) + ev)
@@ -85,7 +97,7 @@ def evaluate_forecast_baseline(
     for index in range(min_train_hours, len(history)):
         train = history[:index]
         actual = float(history[index]["demand_kw"])
-        artifact = train_hourly_forecast_model(train) if model_name == MODEL_TRAINED_HOURLY else None
+        artifact = train_forecast_model_artifact(train, model_name) if is_trainable_model(model_name) else None
         prediction = build_forecast(train, horizon_hours=1, model_name=model_name, model_artifact=artifact)[0]
         error = prediction.demand_kw - actual
         errors.append(error)
@@ -119,7 +131,7 @@ def model_status(history_rows: int, metrics: ForecastMetrics | None = None) -> d
     return {
         "active_model": metrics.model_name,
         "target_model": "Temporal Fusion Transformer",
-        "stage": "Measured baseline, TFT-ready contract",
+        "stage": "Measured baseline, regression artifact, TFT-ready contract",
         "forecast_horizon_hours": 24,
         "training_rows": history_rows,
         "evaluated_points": metrics.evaluated_points,
@@ -131,7 +143,7 @@ def model_status(history_rows: int, metrics: ForecastMetrics | None = None) -> d
         "bias_kw": metrics.bias_kw,
         "coverage_p10_p90": metrics.coverage_p10_p90,
         "drift_status": "not-configured",
-        "registry": "local-json-artifact" if metrics.model_name == MODEL_TRAINED_HOURLY else "pending-mlflow",
+        "registry": "local-json-artifact" if is_trainable_model(metrics.model_name) else "pending-mlflow",
         "artifact": forecast_model_summary(),
     }
 
@@ -153,7 +165,12 @@ def _predict_demand(
     forecast_temp: float,
     model_name: str,
     model_artifact: dict | None = None,
+    scenario_solar_kw: float | None = None,
 ) -> float:
+    if model_name == MODEL_TRAINED_REGRESSION and model_artifact is not None:
+        scenario_solar = PROFILE.solar_kwp * solar_shape(hour) if scenario_solar_kw is None else scenario_solar_kw
+        return predict_regression_demand(model_artifact, hour, forecast_temp, scenario_solar)
+
     if model_name == MODEL_TRAINED_HOURLY and model_artifact is not None:
         hourly = model_artifact.get("hourly", {}).get(str(hour), {})
         global_stats = model_artifact.get("global", {})
@@ -188,6 +205,8 @@ def _predict_solar(
     scenario_solar = PROFILE.solar_kwp * solar_shape(hour) * (1 - cloud_cover * 0.82)
     if model_name == MODEL_SEASONAL:
         return scenario_solar
+    if model_name == MODEL_TRAINED_REGRESSION and model_artifact is not None:
+        return predict_regression_solar(model_artifact, hour, scenario_solar)
     if model_name == MODEL_TRAINED_HOURLY and model_artifact is not None:
         hourly = model_artifact.get("hourly", {}).get(str(hour), {})
         historical = float(hourly.get("solar_kw", scenario_solar))
@@ -214,6 +233,6 @@ def _temperature_sensitivity(history: list[dict]) -> float:
 def _scenario_demand_adjustment(model_name: str, cooling_delta: float) -> float:
     if model_name == MODEL_SEASONAL:
         return cooling_delta
-    if model_name == MODEL_TRAINED_HOURLY:
+    if model_name in {MODEL_TRAINED_HOURLY, MODEL_TRAINED_REGRESSION}:
         return 0.0
     return cooling_delta * 0.35

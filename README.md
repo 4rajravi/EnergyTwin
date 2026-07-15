@@ -32,6 +32,15 @@ Import a local CSV:
 python3 scripts/import_dataset.py data/raw/my-building.csv --output data/processed/current-meter.csv
 ```
 
+Prepare a public Building Data Genome-style CSV:
+
+```bash
+python3 scripts/prepare_public_dataset.py data/raw/building-meter.csv \
+  --format bdg-wide \
+  --building-column building_a \
+  --output data/processed/current-meter.csv
+```
+
 See [docs/data-import.md](docs/data-import.md) for the required schema.
 See [docs/public-data.md](docs/public-data.md) for Building Data Genome-style adapter examples.
 See [docs/weather-enrichment.md](docs/weather-enrichment.md) for joining weather, solar, price, or carbon CSV data.
@@ -51,8 +60,15 @@ python3 scripts/train_forecast_model.py --source demo --scenario price
 ```
 
 Training writes a candidate model first and promotes it to `models/active-forecast-model.json` only if it beats the weighted baseline by the configured metric threshold.
+The current default trainable model is `trained-regression-v1`.
 
 The MLOps dashboard also shows recent run history, forecast error trend, best run, and candidate promotion counts from SQLite.
+
+Generate a macOS daily launchd job:
+
+```bash
+python3 scripts/make_daily_launchd.py --hour 7 --minute 0 --print
+```
 
 ## Project Map
 
@@ -67,6 +83,8 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/sources.py`: data-source selection between demo data and imported CSV.
 - `src/energytwin/enrichment.py`: timestamp-based joins for weather, solar, price, and carbon data.
 - `src/energytwin/adapters/nasa_power.py`: NASA POWER hourly weather-to-enrichment adapter.
+- `src/energytwin/automation.py`: macOS launchd plist generation for daily local runs.
+- `src/energytwin/public_pipeline.py`: public dataset preparation into the internal schema.
 - `src/energytwin/mlops.py`: local experiment report generation.
 - `src/energytwin/model_artifacts.py`: train/save/load support for local forecast artifacts.
 - `src/energytwin/scheduler.py`: interval-based local MLOps scheduler.

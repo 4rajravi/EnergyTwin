@@ -25,6 +25,8 @@ node_modules/
 data/raw/*
 data/processed/*
 data/local/*
+launchd/*.plist
+logs/*.log
 models/*
 mlruns/*
 

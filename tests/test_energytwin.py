@@ -11,12 +11,21 @@ sys.path.insert(0, str(ROOT / "src"))
 from energytwin.data import generate_history, get_scenario
 from energytwin.adapters.building_data_genome import convert_bdg_long_csv, convert_bdg_wide_csv
 from energytwin.adapters.nasa_power import NasaPowerRequest, build_nasa_power_url, nasa_power_json_to_enrichment_rows, write_enrichment_csv
+from energytwin.automation import LaunchdJobConfig, build_launchd_plist, write_launchd_plist
 from energytwin.domain import BatterySpec, TariffSpec
 from energytwin.enrichment import enrich_rows_from_csv
-from energytwin.forecasting import MODEL_TRAINED_HOURLY, build_forecast, evaluate_forecast_baseline
+from energytwin.forecasting import MODEL_TRAINED_HOURLY, MODEL_TRAINED_REGRESSION, build_forecast, evaluate_forecast_baseline
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
 from energytwin.mlops import LocalRunConfig, local_monitoring_summary, read_latest_local_run, run_local_experiment
-from energytwin.model_artifacts import PromotionPolicy, decide_model_promotion, load_forecast_model, save_forecast_model, train_hourly_forecast_model
+from energytwin.model_artifacts import (
+    PromotionPolicy,
+    decide_model_promotion,
+    load_forecast_model,
+    save_forecast_model,
+    train_hourly_forecast_model,
+    train_regression_forecast_model,
+)
+from energytwin.public_pipeline import PublicDatasetConfig, prepare_public_dataset
 from energytwin.scheduler import LocalScheduleConfig, run_local_schedule
 from energytwin.simulator import compare_policies, schedule_for, simulate
 from energytwin.sources import load_history
@@ -60,6 +69,23 @@ class EnergyTwinTests(unittest.TestCase):
             self.assertEqual(loaded["training_rows"], len(history))
             self.assertGreater(metrics.evaluated_points, 0)
             self.assertGreater(metrics.mae_kw, 0)
+        finally:
+            target.unlink(missing_ok=True)
+
+    def test_trained_regression_model_artifact_preserves_forecast_contract(self) -> None:
+        history = generate_history()
+        target = ROOT / "models" / "test-regression-forecast-model.json"
+        try:
+            artifact = train_regression_forecast_model(history)
+            save_forecast_model(artifact, target)
+            loaded = load_forecast_model(target)
+            self.assertIsNotNone(loaded)
+            forecast = build_forecast(history, model_name=MODEL_TRAINED_REGRESSION, model_artifact=loaded)
+            metrics = evaluate_forecast_baseline(history, model_name=MODEL_TRAINED_REGRESSION)
+            self.assertEqual(len(forecast), 24)
+            self.assertEqual(loaded["training_rows"], len(history))
+            self.assertEqual(loaded["model_name"], MODEL_TRAINED_REGRESSION)
+            self.assertGreater(metrics.evaluated_points, 0)
         finally:
             target.unlink(missing_ok=True)
 
@@ -278,6 +304,43 @@ class EnergyTwinTests(unittest.TestCase):
         finally:
             target.unlink(missing_ok=True)
 
+    def test_prepare_public_dataset_converts_and_enriches_bdg_wide(self) -> None:
+        source = ROOT / "data" / "processed" / "test-public-wide.csv"
+        enrichment = ROOT / "data" / "processed" / "test-public-enrichment.csv"
+        output = ROOT / "data" / "processed" / "test-current-meter.csv"
+        try:
+            source.write_text(
+                "timestamp,building_a,building_b\n"
+                "2026-07-07T00:00:00,120.5,98.1\n"
+                "2026-07-07T01:00:00,121.5,97.2\n",
+                encoding="utf-8",
+            )
+            enrichment.write_text(
+                "timestamp,outside_temp_c,solar_kw,price_usd_per_kwh,carbon_kg_per_kwh\n"
+                "2026-07-07T00:00:00,18.5,0.0,0.22,0.41\n"
+                "2026-07-07T01:00:00,18.2,0.0,0.20,0.40\n",
+                encoding="utf-8",
+            )
+            summary = prepare_public_dataset(
+                PublicDatasetConfig(
+                    input_path=source,
+                    input_format="bdg-wide",
+                    output_path=output,
+                    building_column="building_a",
+                    enrichment_csv=enrichment,
+                    require_enrichment_match=True,
+                )
+            )
+            rows = load_meter_csv(output)
+            self.assertEqual(summary["row_count"], 2)
+            self.assertEqual(rows[0]["demand_kw"], 120.5)
+            self.assertEqual(rows[0]["outside_temp_c"], 18.5)
+            self.assertEqual(rows[1]["price_usd_per_kwh"], 0.2)
+        finally:
+            source.unlink(missing_ok=True)
+            enrichment.unlink(missing_ok=True)
+            output.unlink(missing_ok=True)
+
     def test_local_mlops_run_writes_report(self) -> None:
         output_dir = ROOT / "mlruns" / "test-local"
         db_path = ROOT / "data" / "processed" / "test-local-runs.sqlite3"
@@ -309,7 +372,7 @@ class EnergyTwinTests(unittest.TestCase):
             report = run_local_experiment(
                 LocalRunConfig(
                     scenario_key="normal",
-                    model_name=MODEL_TRAINED_HOURLY,
+                    model_name=MODEL_TRAINED_REGRESSION,
                     train_model=True,
                     active_model_path=str(active_model),
                     candidate_model_path=str(candidate_model),
@@ -320,7 +383,7 @@ class EnergyTwinTests(unittest.TestCase):
             self.assertEqual(report["model_candidate"]["artifact_training_rows"], 168)
             self.assertTrue(candidate_model.exists())
             self.assertEqual(active_model.exists(), report["model_candidate"]["promotion"]["promoted"])
-            self.assertEqual(load_forecast_model(candidate_model)["model_name"], MODEL_TRAINED_HOURLY)
+            self.assertEqual(load_forecast_model(candidate_model)["model_name"], MODEL_TRAINED_REGRESSION)
         finally:
             active_model.unlink(missing_ok=True)
             candidate_model.unlink(missing_ok=True)
@@ -406,6 +469,39 @@ class EnergyTwinTests(unittest.TestCase):
             for path in output_dir.glob("*.json"):
                 path.unlink(missing_ok=True)
             output_dir.rmdir()
+
+    def test_launchd_plist_runs_daily_one_shot_pipeline(self) -> None:
+        plist = build_launchd_plist(
+            LaunchdJobConfig(
+                label="com.energytwin.test",
+                hour=6,
+                minute=30,
+                source_key="demo",
+                scenario_key="price",
+                project_root=ROOT,
+                python_executable="/usr/bin/python3",
+            )
+        )
+        args = plist["ProgramArguments"]
+        self.assertEqual(plist["Label"], "com.energytwin.test")
+        self.assertEqual(plist["StartCalendarInterval"], {"Hour": 6, "Minute": 30})
+        self.assertIn("scripts/schedule_local_pipeline.py", args[1])
+        self.assertIn("--train-model", args)
+        self.assertIn("--max-runs", args)
+        self.assertEqual(args[args.index("--max-runs") + 1], "1")
+
+    def test_launchd_plist_writer_creates_file(self) -> None:
+        target = ROOT / "launchd" / "test-energytwin.plist"
+        try:
+            written = write_launchd_plist(
+                LaunchdJobConfig(label="com.energytwin.test", project_root=ROOT),
+                target,
+            )
+            self.assertEqual(written, target)
+            self.assertTrue(target.exists())
+            self.assertIn(b"com.energytwin.test", target.read_bytes())
+        finally:
+            target.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

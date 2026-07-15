@@ -7,15 +7,16 @@ from pathlib import Path
 
 from .data import get_scenario
 from .domain import BatterySpec, TariffSpec, serialize
-from .forecasting import MODEL_TRAINED_HOURLY, MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline
+from .forecasting import MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline
 from .ingestion import data_health
 from .model_artifacts import (
     DEFAULT_CANDIDATE_FORECAST_MODEL_PATH,
     DEFAULT_FORECAST_MODEL_PATH,
     PromotionPolicy,
     decide_model_promotion,
+    is_trainable_model,
     save_forecast_model,
-    train_hourly_forecast_model,
+    train_forecast_model_artifact,
 )
 from .simulator import compare_policies
 from .sources import PROJECT_ROOT, load_history
@@ -29,7 +30,7 @@ LOCAL_RUNS_DIR = PROJECT_ROOT / "mlruns" / "local"
 class LocalRunConfig:
     source_key: str = "demo"
     scenario_key: str = "normal"
-    model_name: str = "weighted-baseline-v1"
+    model_name: str = MODEL_WEIGHTED
     demand_charge_usd_per_kw_day: float = 3.2
     export_credit_fraction: float = 0.32
     battery_wear_cost_usd_per_kwh: float = 0.018
@@ -54,9 +55,11 @@ def run_local_experiment(
     reference_metrics = None
     promotion = None
     if config.train_model:
-        trained_artifact = train_hourly_forecast_model(history)
+        if not is_trainable_model(config.model_name):
+            raise ValueError(f"model is not trainable: {config.model_name}")
+        trained_artifact = train_forecast_model_artifact(history, config.model_name)
         candidate_model_path = save_forecast_model(trained_artifact, config.candidate_model_path)
-        candidate_metrics = evaluate_forecast_baseline(history, model_name=MODEL_TRAINED_HOURLY)
+        candidate_metrics = evaluate_forecast_baseline(history, model_name=config.model_name)
         reference_metrics = evaluate_forecast_baseline(history, model_name=MODEL_WEIGHTED)
         promotion = decide_model_promotion(
             candidate_metrics,
@@ -68,7 +71,7 @@ def run_local_experiment(
             promotion["reason"] = "forced promotion requested"
         if promotion["promoted"]:
             active_model_path = save_forecast_model(trained_artifact, config.active_model_path)
-    forecast_artifact = trained_artifact if config.train_model and config.model_name == MODEL_TRAINED_HOURLY else None
+    forecast_artifact = trained_artifact if config.train_model and is_trainable_model(config.model_name) else None
     forecast = build_forecast(
         history,
         scenario_key=config.scenario_key,

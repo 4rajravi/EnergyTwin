@@ -10,14 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from energytwin.forecasting import MODEL_TRAINED_HOURLY, MODEL_WEIGHTED, evaluate_forecast_baseline  # noqa: E402
+from energytwin.forecasting import MODEL_TRAINED_REGRESSION, MODEL_WEIGHTED, evaluate_forecast_baseline  # noqa: E402
 from energytwin.model_artifacts import (  # noqa: E402
     DEFAULT_CANDIDATE_FORECAST_MODEL_PATH,
     DEFAULT_FORECAST_MODEL_PATH,
     PromotionPolicy,
     decide_model_promotion,
+    is_trainable_model,
     save_forecast_model,
-    train_hourly_forecast_model,
+    train_forecast_model_artifact,
 )
 from energytwin.sources import load_history  # noqa: E402
 
@@ -26,6 +27,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Train and save a local Energy Twin forecast model artifact.")
     parser.add_argument("--source", default="demo", choices=("demo", "imported"))
     parser.add_argument("--scenario", default="normal")
+    parser.add_argument("--model", default=MODEL_TRAINED_REGRESSION)
     parser.add_argument("--candidate-output", default=str(DEFAULT_CANDIDATE_FORECAST_MODEL_PATH))
     parser.add_argument("--active-output", default=str(DEFAULT_FORECAST_MODEL_PATH))
     parser.add_argument("--min-improvement-pct", type=float, default=0.02)
@@ -33,9 +35,11 @@ def main() -> int:
     args = parser.parse_args()
 
     history, source_label = load_history(source_key=args.source, scenario_key=args.scenario)
-    artifact = train_hourly_forecast_model(history, model_name=MODEL_TRAINED_HOURLY)
+    if not is_trainable_model(args.model):
+        raise SystemExit(f"model is not trainable: {args.model}")
+    artifact = train_forecast_model_artifact(history, args.model)
     candidate_target = save_forecast_model(artifact, args.candidate_output)
-    candidate_metrics = evaluate_forecast_baseline(history, model_name=MODEL_TRAINED_HOURLY)
+    candidate_metrics = evaluate_forecast_baseline(history, model_name=args.model)
     reference_metrics = evaluate_forecast_baseline(history, model_name=MODEL_WEIGHTED)
     promotion = decide_model_promotion(
         candidate_metrics,

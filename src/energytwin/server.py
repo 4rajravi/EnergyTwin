@@ -9,8 +9,9 @@ from urllib.parse import parse_qs, urlparse
 
 from .data import available_scenarios, get_scenario
 from .domain import BatterySpec, TariffSpec, serialize
-from .forecasting import build_forecast, evaluate_forecast_baseline, model_status
+from .forecasting import MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline, model_status
 from .mlops import list_local_runs, local_monitoring_summary, read_latest_local_run
+from .model_artifacts import forecast_model_summary
 from .simulator import compare_policies, simulate
 from .sources import available_data_sources, current_data_health, load_history
 
@@ -44,7 +45,7 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         scenario_key = query.get("scenario", ["normal"])[0]
         controller = query.get("controller", ["baseline"])[0]
         source_key = query.get("source", ["demo"])[0]
-        model_name = query.get("model", ["weighted-baseline-v1"])[0]
+        model_name = query.get("model", [_default_model_name()])[0]
         battery, tariff = _economics_from_query(query)
         scenario = get_scenario(scenario_key, _scenario_overrides_from_query(query))
         history, source_label = load_history(source_key=source_key, scenario_key=scenario_key, scenario=scenario)
@@ -197,6 +198,11 @@ def _int_query(query: dict[str, list[str]], key: str, default: int, minimum: int
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _default_model_name() -> str:
+    artifact = forecast_model_summary()
+    return str(artifact.get("model_name") or MODEL_WEIGHTED) if artifact.get("available") else MODEL_WEIGHTED
 
 
 def main() -> None:

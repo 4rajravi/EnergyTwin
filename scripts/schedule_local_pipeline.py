@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from energytwin.mlops import LOCAL_RUNS_DIR, LocalRunConfig  # noqa: E402
-from energytwin.forecasting import MODEL_WEIGHTED  # noqa: E402
+from energytwin.forecasting import MODEL_TRAINED_REGRESSION  # noqa: E402
 from energytwin.scheduler import LocalScheduleConfig, run_local_schedule  # noqa: E402
 from energytwin.storage import LOCAL_DB_PATH  # noqa: E402
 
@@ -20,7 +20,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the local Energy Twin MLOps pipeline on a schedule.")
     parser.add_argument("--source", default="demo", choices=("demo", "imported"))
     parser.add_argument("--scenario", default="normal")
-    parser.add_argument("--model", default=MODEL_WEIGHTED)
+    parser.add_argument("--model", default=MODEL_TRAINED_REGRESSION)
     parser.add_argument("--demand-charge", type=float, default=3.2)
     parser.add_argument("--export-credit", type=float, default=0.32)
     parser.add_argument("--battery-wear", type=float, default=0.018)

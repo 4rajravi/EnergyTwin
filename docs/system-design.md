@@ -314,7 +314,7 @@ flowchart LR
     L --> P[Dashboard MLOps panel]
 ```
 
-The scheduler can retrain the local `trained-hourly-v1` artifact with `--train-model`. Promotion compares the candidate against `weighted-baseline-v1`; the active artifact is overwritten only when the candidate clears the MAE improvement threshold.
+The scheduler can retrain local artifacts such as `trained-regression-v1` with `--train-model`. Promotion compares the candidate against `weighted-baseline-v1`; the active artifact is overwritten only when the candidate clears the MAE improvement threshold.
 
 The monitoring summary is intentionally small: latest MAE, previous-vs-latest delta, best historical run, promotion counts, and a trend label. This is enough for daily local operation without adding Evidently yet.
 
@@ -338,6 +338,7 @@ Current model:
 
 - measured weighted baseline
 - trainable hourly artifact
+- trainable regression artifact
 - 24-hour forecast
 - demand and solar outputs
 - uncertainty bands
@@ -354,10 +355,10 @@ Future options:
 
 Recommended path:
 
-1. keep improving the measured baseline and evaluation
-2. add stronger statistical baselines
-3. add N-HiTS or PatchTST
-4. add TFT once data/features are mature
+1. keep `trained-regression-v1` as the current local benchmark
+2. add N-HiTS or PatchTST
+3. add TFT once data/features are mature
+4. add MLflow registry once multiple serious model families exist
 
 ## 12. Simulator Design
 

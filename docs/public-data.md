@@ -1,6 +1,49 @@
 # Public Data Adapters
 
-This project does not download public datasets automatically yet. The current step is an offline adapter: take a public-data CSV you already have and convert one building into the internal Energy Twin schema.
+This project does not download large public datasets automatically yet. The current workflow is automated after you place a public-data CSV under `data/raw/`: choose one building, convert it into the internal Energy Twin schema, optionally join enrichment, then train using `--source imported`.
+
+## One Command Preparation
+
+Wide-format example:
+
+```bash
+python3 scripts/prepare_public_dataset.py data/raw/building-meter.csv \
+  --format bdg-wide \
+  --building-column building_a \
+  --output data/processed/current-meter.csv
+```
+
+Long-format example:
+
+```bash
+python3 scripts/prepare_public_dataset.py data/raw/building-meter.csv \
+  --format bdg-long \
+  --building-id bldg-1 \
+  --output data/processed/current-meter.csv
+```
+
+With enrichment:
+
+```bash
+python3 scripts/prepare_public_dataset.py data/raw/building-meter.csv \
+  --format bdg-wide \
+  --building-column building_a \
+  --enrichment-csv data/processed/weather-enrichment.csv \
+  --require-enrichment-match \
+  --output data/processed/current-meter.csv
+```
+
+Then train and record an MLOps run:
+
+```bash
+python3 scripts/run_local_pipeline.py \
+  --source imported \
+  --scenario price \
+  --model trained-regression-v1 \
+  --train-model
+```
+
+The dashboard will show the imported source when `data/processed/current-meter.csv` exists.
 
 ## Building Data Genome-Style Imports
 
@@ -16,7 +59,7 @@ timestamp,building_a,building_b
 2026-07-07T01:00:00,121.5,97.2
 ```
 
-Import one building:
+Import one building directly:
 
 ```bash
 python3 scripts/import_dataset.py data/raw/building-meter.csv \
@@ -36,7 +79,7 @@ timestamp,building_id,meter_reading
 2026-07-07T01:00:00,bldg-1,121.5
 ```
 
-Import one building:
+Import one building directly:
 
 ```bash
 python3 scripts/import_dataset.py data/raw/building-meter.csv \
@@ -69,6 +112,6 @@ python3 scripts/import_dataset.py data/raw/building-meter.csv \
 
 ## Do You Need To Download Data Now?
 
-Not yet. The adapter is ready for public data, but we can keep building and testing with local sample files.
+Yes, before real-data training. Download a public meter CSV into `data/raw/`, then run `scripts/prepare_public_dataset.py`.
 
-When we decide to use real public data, download the meter CSV into `data/raw/`, then run one of the import commands above.
+The script prepares local files only. It does not fetch large datasets because those sources vary in size, license, and download mechanism.

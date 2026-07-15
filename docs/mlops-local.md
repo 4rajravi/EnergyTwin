@@ -48,7 +48,7 @@ Run the pipeline with retraining:
 python3 scripts/run_local_pipeline.py \
   --source demo \
   --scenario price \
-  --model trained-hourly-v1 \
+  --model trained-regression-v1 \
   --train-model
 ```
 
@@ -75,13 +75,13 @@ timer
 → dashboard reads latest run and recent history
 ```
 
-With `--train-model`, the run retrains the local `trained-hourly-v1` artifact before prediction. Without that flag, it reruns the selected forecasting contract and records whether it is performing well.
+With `--train-model`, the run retrains the selected local artifact before prediction. Without that flag, it reruns the selected forecasting contract and records whether it is performing well.
 
 Retraining now uses a promotion gate:
 
 ```text
 train candidate
-→ evaluate candidate trained-hourly-v1
+→ evaluate candidate model
 → evaluate reference weighted-baseline-v1
 → promote only if candidate MAE improves enough
 ```
@@ -113,7 +113,7 @@ For a daily local loop:
 python3 scripts/schedule_local_pipeline.py \
   --source demo \
   --scenario price \
-  --model trained-hourly-v1 \
+  --model trained-regression-v1 \
   --train-model \
   --interval-minutes 1440 \
   --forever
@@ -121,13 +121,40 @@ python3 scripts/schedule_local_pipeline.py \
 
 Daily is enough for the current project shape. The monitoring layer compares each run against prior run history and marks the trend as `improving`, `stable`, `degrading`, or `insufficient-history`.
 
+## macOS Daily Automation
+
+Generate a launchd plist for a daily one-shot run:
+
+```bash
+python3 scripts/make_daily_launchd.py \
+  --hour 7 \
+  --minute 0 \
+  --source demo \
+  --scenario price \
+  --print
+```
+
+This writes:
+
+```text
+launchd/com.energytwin.daily.plist
+```
+
+To install it into macOS LaunchAgents, run:
+
+```bash
+python3 scripts/make_daily_launchd.py --hour 7 --minute 0 --install
+```
+
+Then load it with the command printed by the script. The generated job runs `scripts/schedule_local_pipeline.py --max-runs 1`, so launchd handles the daily schedule instead of keeping a forever loop alive.
+
 ## Why SQLite Now
 
 SQLite is the smallest useful persistence layer for run history. JSON files remain easy to inspect, while SQLite lets the API list, sort, and summarize past runs. This is a stepping stone toward Postgres/TimescaleDB, not a separate product direction.
 
 ## Why This Model First
 
-`trained-hourly-v1` is intentionally simple: it learns hourly demand, solar, and temperature sensitivity from the current source data. It is not the final AI model. It gives the project a real train/save/load/promote path before adding N-HiTS, PatchTST, TFT, or MLflow model registry.
+`trained-regression-v1` is the current strongest local model. It learns a small regression over hour, temperature, cooling load, solar, and peak-shape features. It is not deep learning, but it gives the project a real train/save/load/promote path and creates a stronger benchmark for N-HiTS, PatchTST, TFT, or MLflow model registry.
 
 ## Why This Exists Before MLflow
 

@@ -60,10 +60,10 @@ flowchart TD
 | phase | status | what it means |
 | --- | --- | --- |
 | 0. Local MVP skeleton | Done | Dashboard, APIs, forecast contract, simulator, optimizer, tests |
-| 1. Data import and validation | In progress | CSV import, schema validation, data-health UI |
-| 2. Real public meter data adapter | Adapter ready | Convert Building Data Genome-style meter data into our schema |
+| 1. Data import and validation | Done | CSV import, schema validation, data-health UI |
+| 2. Real public meter data adapter | Preparation command ready | Convert Building Data Genome-style meter data into our schema |
 | 3. Weather and solar enrichment | NASA POWER adapter ready | Add weather/solar/price/carbon columns by timestamp |
-| 4. Forecasting upgrade | Trainable artifact ready | Replace hourly artifact with stronger models |
+| 4. Forecasting upgrade | Regression artifact ready | DL model must beat promoted regression benchmark |
 | 5. Simulator and optimizer upgrade | Configurable economics ready | More realistic battery, tariff, comfort, HVAC behavior |
 | 6. MLOps pipeline | Local monitoring ready | MLflow, richer drift monitoring |
 | 7. Database and cache | SQLite started | Postgres/TimescaleDB and Redis |
@@ -75,10 +75,11 @@ flowchart TD
 | decision | options | current choice | why |
 | --- | --- | --- | --- |
 | First data layer | demo only, CSV, DuckDB, Postgres | CSV + validation | Teaches schema discipline without infrastructure overhead |
-| Forecast model now | coded baseline, local artifact, TFT immediately | local hourly artifact | Adds real train/save/load mechanics before deep learning |
+| Forecast model now | coded baseline, local artifact, TFT immediately | local regression artifact | Stronger local benchmark before deep learning |
 | Streaming now | none, Kafka, Kafka + Flink | none | No live telemetry yet |
 | Database now | files, SQLite, DuckDB, Postgres/TimescaleDB | SQLite for run history | Small persistence step without committing the whole app to a database yet |
 | Public meter data | downloader, adapter, manual CSV only | adapter | Supports real data shape without network or large files |
+| Public dataset prep | manual import, one preparation command, auto downloader | one preparation command | Automates local public CSV conversion while avoiding dataset-size/license issues |
 | Weather enrichment | NASA POWER first, manual join, placeholders | manual join | Teaches the join contract before adding an external API |
 | Forecasting upgrade | jump to deep learning, measured baseline first | measured baseline | Gives us metrics before adding heavier ML |
 | Simulator economics | energy cost only, demand charge, battery wear | demand charge + battery wear | Makes peak reduction and cycling tradeoffs visible |
@@ -91,21 +92,22 @@ flowchart TD
 | Scheduler | manual command, cron, Prefect | project-owned scheduler script | Gives repeatable local automation before installing system cron or adding Prefect |
 | Retraining first step | no retraining, local artifact, MLflow registry | local artifact + promotion gate | Makes retraining concrete without a service dependency |
 | Daily monitoring | none, dashboard summary, Evidently | dashboard summary | Daily runs need trend visibility, not heavy monitoring infrastructure yet |
+| Daily automation | manual, launchd, cron, Prefect | launchd generator | macOS can run one local pipeline per day without a long-running loop |
 
 ## Next Step
 
-Recommended next step: choose whether to improve the forecasting model quality or make daily automation easier.
+Recommended next step: choose whether to add deep-learning dependencies or import more realistic public data.
 
 That means:
 
-1. Add a stronger statistical forecasting baseline, or
-2. Add a macOS launchd or cron helper, or
+1. Add N-HiTS/PatchTST training, or
+2. Import and enrich a real public building dataset, or
 3. Move the local scheduler into Prefect.
 
 Options:
 
-- **Forecasting baseline**: teaches evaluation and makes the AI part more real.
-- **Daily automation helper**: starts the daily pipeline after login/reboot.
+- **Deep-learning model**: tests whether DL beats the promoted regression artifact.
+- **Real public data**: gives the models something less synthetic to learn.
 - **Prefect scheduler**: adds retries, logs, and pipeline history.
 
-My recommendation: replace the hourly artifact with a stronger forecasting model, then add a launchd/cron helper.
+My recommendation: import and enrich a real public dataset next, then add DL once the data is less synthetic.
