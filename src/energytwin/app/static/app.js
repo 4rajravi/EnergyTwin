@@ -215,15 +215,8 @@ function render() {
     metric("Economics", money(state.comparison.optimized.battery_wear_cost_usd), `${money(state.comparison.optimized.demand_charge_usd)} demand, ${number(state.economics.exportCredit * 100, "%")} export`),
   ].join("");
 
-  $("#modelMetrics").innerHTML = [
-    metric("Active model", state.model.active_model, state.model.stage),
-    metric("MAE", number(state.evaluation.mae_kw, " kW"), `RMSE ${number(state.evaluation.rmse_kw, " kW")}`),
-    metric("sMAPE", number(state.evaluation.smape * 100, "%"), `Bias ${number(state.evaluation.bias_kw, " kW")}`),
-    metric("P10-P90 coverage", number(state.evaluation.coverage_p10_p90 * 100, "%"), `${state.evaluation.evaluated_points} backtest points`),
-    metric("Data health", `${state.dataHealth.valid_rows}/${state.dataHealth.row_count}`, `${state.dataHealth.invalid_rows} invalid rows`),
-  ].join("");
-
-  renderRunMetrics();
+  renderScenarioMetrics();
+  renderModelMetrics();
   renderMonitoringMetrics();
   renderRunHistory();
   drawMlopsTrend();
@@ -233,22 +226,22 @@ function render() {
   drawPolicy();
 }
 
-function renderRunMetrics() {
-  if (!state.mlopsRun) {
-    $("#runMetrics").innerHTML = [
-      metric("Latest run", "None", "Run scripts/run_local_pipeline.py"),
-      metric("Run scenario", "-", "No persisted report"),
-      metric("Run MAE", "-", "No persisted report"),
-      metric("Optimized savings", "-", "No persisted report"),
-    ].join("");
-    return;
-  }
-  const run = state.mlopsRun;
-  $("#runMetrics").innerHTML = [
-    metric("Latest run", shortRunId(run.run_id), run.created_at.replace("T", " ").slice(0, 19)),
-    metric("Run scenario", run.config.scenario_key, run.config.source_key),
-    metric("Run MAE", number(run.forecast_metrics.mae_kw, " kW"), `sMAPE ${number(run.forecast_metrics.smape * 100, "%")}`),
-    metric("Optimized savings", number(run.policy_comparison.optimized.cost_savings_pct, "%"), `${money(run.policy_comparison.optimized.total_cost_usd)} total`),
+function renderScenarioMetrics() {
+  $("#scenarioMetrics").innerHTML = [
+    metric("Optimized savings", number(state.comparison.optimized.cost_savings_pct, "%"), `${money(state.comparison.optimized.total_cost_usd)} total`),
+    metric("Peak reduction", number(state.comparison.optimized.peak_reduction_pct, "%"), `${number(state.comparison.optimized.peak_grid_kw, " kW")} peak`),
+    metric("Carbon reduction", number(state.comparison.optimized.carbon_reduction_pct, "%"), `${number(state.comparison.optimized.carbon_kg, " kg")} CO2`),
+    metric("Assumptions", `${number(state.customScenario.priceMultiplier, "x")} price`, `${number(state.customScenario.tempDelta, "C")}, ${number(state.customScenario.cloudCover * 100, "%")} cloud`),
+  ].join("");
+}
+
+function renderModelMetrics() {
+  const latest = state.mlopsRun;
+  $("#modelMetrics").innerHTML = [
+    metric("Active model", state.model.active_model, state.model.artifact && state.model.artifact.available ? "saved artifact" : "live baseline"),
+    metric("Forecast error", number(state.evaluation.mae_kw, " kW"), `RMSE ${number(state.evaluation.rmse_kw, " kW")}`),
+    metric("Data source", state.source, `${state.dataHealth.valid_rows}/${state.dataHealth.row_count} valid rows`),
+    metric("Latest run", latest ? shortRunId(latest.run_id) : "None", latest ? latest.created_at.replace("T", " ").slice(0, 19) : "Run local pipeline"),
   ].join("");
 }
 
@@ -268,8 +261,10 @@ function renderMonitoringMetrics() {
     metric("Trend", monitoring.status, `${number(monitoring.mae_delta_kw, " kW")} from previous`),
     metric("Best MAE", number(monitoring.best.mae_kw, " kW"), shortRunId(monitoring.best.run_id)),
     metric("Promotion", `${monitoring.promotion.promoted}/${monitoring.promotion.candidate_runs}`, `${monitoring.promotion.rejected} rejected`),
-    metric("Latest decision", latestPromotion ? (latestPromotion.promoted ? "Promoted" : "Rejected") : "None", latestPromotion ? latestPromotion.reason : "No candidate run"),
+    metric("Latest decision", latestPromotion ? (latestPromotion.promoted ? "Promoted" : "Rejected") : "None", latestPromotion ? shortReason(latestPromotion.reason) : "No candidate run"),
   ].join("");
+  const pipelineData = $("#pipelineData");
+  if (pipelineData) pipelineData.textContent = state.source === "imported" ? "imported CSV" : "demo profile";
 }
 
 function renderRunHistory() {
@@ -314,6 +309,13 @@ function drawMlopsTrend() {
 function shortRunId(runId) {
   const parts = String(runId).split("-");
   return parts.slice(0, 2).join("-");
+}
+
+function shortReason(reason) {
+  if (!reason) return "";
+  if (reason.includes("improved")) return "candidate beat baseline";
+  if (reason.includes("did not meet")) return "candidate stayed inactive";
+  return reason.slice(0, 48);
 }
 
 function drawForecast() {
@@ -460,8 +462,15 @@ function drawLegend(svg, entries) {
 
 function drawHourLabels(svg, rows, x) {
   rows.forEach((row, index) => {
-    if (index % 4 === 0) label(svg, `${row.hour}:00`, x(index) - 12, 318, "chart-label");
+    if (index % 4 === 0) label(svg, `${hourFor(row)}:00`, x(index) - 12, 318, "chart-label");
   });
+}
+
+function hourFor(row) {
+  if (Number.isFinite(Number(row.hour))) return Number(row.hour);
+  const parsed = new Date(row.timestamp);
+  if (!Number.isNaN(parsed.getTime())) return parsed.getHours();
+  return 0;
 }
 
 function line(svg, x1, y1, x2, y2, className) {

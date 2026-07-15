@@ -1,6 +1,51 @@
 # Public Data Adapters
 
-This project does not download large public datasets automatically yet. The current workflow is automated after you place a public-data CSV under `data/raw/`: choose one building, convert it into the internal Energy Twin schema, optionally join enrichment, then train using `--source imported`.
+This project can download direct public CSV or ZIP URLs into `data/raw/`, then convert one building into the internal Energy Twin schema. You still choose the dataset and building column/id because public datasets differ in license, size, and CSV shape.
+
+## Automatic Download
+
+Direct CSV example:
+
+```bash
+python3 scripts/download_public_dataset.py \
+  --url "https://example.org/path/to/public-meter-data.csv" \
+  --output data/raw/building-meter.csv
+```
+
+ZIP example:
+
+```bash
+python3 scripts/download_public_dataset.py \
+  --url "https://example.org/path/to/public-meter-data.zip" \
+  --output data/raw/building-meter.csv \
+  --extract-zip \
+  --extract-member "meters/building-meter.csv"
+```
+
+Use `--sha256` when the dataset page provides a checksum. Use `--max-mb` to protect yourself from unexpectedly large files.
+
+## Hard-Coded Default Profile
+
+The project has one hard-coded real-data profile:
+
+| setting | value |
+| --- | --- |
+| dataset folder | `data/raw/buildingdatagenomeproject2/` |
+| meter CSV | `electricity_cleaned.csv` |
+| metadata CSV | `metadata.csv` |
+| weather CSV | `weather.csv` |
+| selected building | `Hog_office_Betsy` |
+| building type | office |
+| NASA enrichment output | `data/raw/nasa-power-enrichment.csv` |
+| prepared output | `data/processed/current-meter.csv` |
+
+Run it:
+
+```bash
+python3 scripts/prepare_default_real_data.py
+```
+
+This derives the date range from the selected electricity meter, derives coordinates from `metadata.csv`, fetches NASA POWER weather/solar enrichment for the same dates, then prepares `data/processed/current-meter.csv`.
 
 ## One Command Preparation
 
@@ -39,7 +84,7 @@ Then train and record an MLOps run:
 python3 scripts/run_local_pipeline.py \
   --source imported \
   --scenario price \
-  --model trained-regression-v1 \
+  --model trained-mlp-v1 \
   --train-model
 ```
 
@@ -112,6 +157,6 @@ python3 scripts/import_dataset.py data/raw/building-meter.csv \
 
 ## Do You Need To Download Data Now?
 
-Yes, before real-data training. Download a public meter CSV into `data/raw/`, then run `scripts/prepare_public_dataset.py`.
+Yes, before real-data training. Download a public meter CSV or ZIP member into `data/raw/`, then run `scripts/prepare_public_dataset.py`.
 
-The script prepares local files only. It does not fetch large datasets because those sources vary in size, license, and download mechanism.
+The downloader intentionally accepts a direct URL instead of hiding a dataset choice. That keeps you in control of license, file size, building selection, and checksum verification.

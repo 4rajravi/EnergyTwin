@@ -2,7 +2,7 @@
 
 A non-RL energy digital twin for a commercial building. It forecasts 24-hour demand and solar production, simulates battery/grid behavior, and compares baseline, rule-based, and optimized control policies in a browser dashboard.
 
-This first build is intentionally shippable without cloud services or external data downloads. The core is real-data-ready: ingestion, deep forecasting, MLOps, cache, database, Kafka, and Flink can be added behind the current module boundaries.
+This first build is intentionally shippable without cloud services. The core is real-data-ready: public CSV/ZIP download, ingestion, local neural forecasting, MLOps, cache, database, Kafka, and Flink can be added behind the current module boundaries.
 
 ## Run
 
@@ -32,7 +32,13 @@ Import a local CSV:
 python3 scripts/import_dataset.py data/raw/my-building.csv --output data/processed/current-meter.csv
 ```
 
-Prepare a public Building Data Genome-style CSV:
+Prepare the downloaded Building Data Genome 2 dataset:
+
+```bash
+python3 scripts/prepare_default_real_data.py
+```
+
+Or prepare it manually:
 
 ```bash
 python3 scripts/prepare_public_dataset.py data/raw/building-meter.csv \
@@ -46,6 +52,7 @@ See [docs/public-data.md](docs/public-data.md) for Building Data Genome-style ad
 See [docs/weather-enrichment.md](docs/weather-enrichment.md) for joining weather, solar, price, or carbon CSV data.
 See [docs/nasa-power.md](docs/nasa-power.md) for NASA POWER weather enrichment.
 See [docs/mlops-local.md](docs/mlops-local.md) for local experiment reports.
+See [docs/production-infra.md](docs/production-infra.md) for Postgres/TimescaleDB and Redis setup.
 
 Run a scheduled local MLOps loop:
 
@@ -60,7 +67,7 @@ python3 scripts/train_forecast_model.py --source demo --scenario price
 ```
 
 Training writes a candidate model first and promotes it to `models/active-forecast-model.json` only if it beats the weighted baseline by the configured metric threshold.
-The current default trainable model is `trained-regression-v1`.
+The current default trainable model is `trained-regression-v1`. To train the local neural network model, pass `--model trained-mlp-v1`.
 
 The MLOps dashboard also shows recent run history, forecast error trend, best run, and candidate promotion counts from SQLite.
 
@@ -84,11 +91,15 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/enrichment.py`: timestamp-based joins for weather, solar, price, and carbon data.
 - `src/energytwin/adapters/nasa_power.py`: NASA POWER hourly weather-to-enrichment adapter.
 - `src/energytwin/automation.py`: macOS launchd plist generation for daily local runs.
+- `src/energytwin/downloads.py`: direct CSV/ZIP public dataset downloader.
+- `src/energytwin/real_data_defaults.py`: hard-coded default public-meter and NASA POWER profile.
 - `src/energytwin/public_pipeline.py`: public dataset preparation into the internal schema.
 - `src/energytwin/mlops.py`: local experiment report generation.
 - `src/energytwin/model_artifacts.py`: train/save/load support for local forecast artifacts.
 - `src/energytwin/scheduler.py`: interval-based local MLOps scheduler.
 - `src/energytwin/storage.py`: SQLite persistence for local experiment history.
+- `src/energytwin/production_db.py`: optional Postgres-backed run history.
+- `src/energytwin/cache.py`: optional Redis API response cache.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.
 - `/api/forecast-evaluation`: local backtest metrics for the active baseline.
 - `src/energytwin/simulator.py`: battery, grid import/export, tariff cost breakdown, carbon, and comfort simulation.

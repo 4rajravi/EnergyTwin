@@ -12,6 +12,7 @@ dependencies = []
 api = ["fastapi>=0.116", "uvicorn>=0.35"]
 ml = ["mlflow>=2.14", "numpy>=2.0", "pandas>=2.2", "torch>=2.3", "pytorch-forecasting>=1.1"]
 ops = ["prefect>=3.0", "evidently>=0.4"]
+prod = ["psycopg[binary]>=3.2", "redis>=5.0"]
 
 [project.scripts]
 energytwin = "energytwin.server:main"

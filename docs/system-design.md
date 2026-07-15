@@ -126,6 +126,8 @@ sequenceDiagram
 | Local MLOps | `src/energytwin/mlops.py` | writes dependency-free local experiment reports |
 | Local scheduler | `src/energytwin/scheduler.py` | repeats local MLOps runs on an interval |
 | Local storage | `src/energytwin/storage.py` | stores local experiment history in SQLite |
+| Production storage | `src/energytwin/production_db.py` | stores run history in Postgres/Timescale-compatible schema |
+| Cache | `src/energytwin/cache.py` | optional Redis cache for expensive API responses |
 | Model artifacts | `src/energytwin/model_artifacts.py` | trains, saves, and loads local forecast model artifacts |
 | Forecasting | `src/energytwin/forecasting.py` | returns a 24-hour forecast contract |
 | Simulator | `src/energytwin/simulator.py` | simulates grid import/export, battery, cost, carbon, comfort |
@@ -167,6 +169,7 @@ Current API endpoints:
 | `/api/mlops-run` | return the latest local experiment report |
 | `/api/mlops-runs` | return recent local experiment summaries |
 | `/api/mlops-monitoring` | return forecast error trend and promotion summary |
+| `/api/system-status` | show active storage and cache backend |
 
 Current query parameters:
 
@@ -201,13 +204,19 @@ mlruns/                   future MLflow runs
 
 The local SQLite database stores MLOps run summaries and full report payloads. JSON reports are still written under `mlruns/local` for easy manual inspection.
 
+### Production Available
+
+Set `ENERGYTWIN_DATABASE_URL` to switch MLOps run history from SQLite to Postgres:
+
+```text
+ENERGYTWIN_DATABASE_URL=postgresql://energytwin:password@host:5432/energytwin
+```
+
+The current Postgres schema stores run summaries plus full JSONB run payloads. It is TimescaleDB-compatible, but it does not require TimescaleDB yet.
+
 ### Next
 
-Add DuckDB if local analytical queries across large imported meter datasets become painful.
-
-### Production Direction
-
-Use Postgres/TimescaleDB for:
+Add normalized production tables for:
 
 - meter readings
 - weather features
@@ -217,11 +226,20 @@ Use Postgres/TimescaleDB for:
 - model metadata
 - data quality records
 
-The SQLite storage boundary should migrate to Postgres/TimescaleDB once the run, forecast, and simulation schemas stabilize.
+Add DuckDB if local analytical queries across large imported meter datasets become painful.
+
+The SQLite storage boundary now has a Postgres adapter. The next migration is moving more than run history into production tables.
 
 ## 8. Cache Design
 
-No cache is needed yet.
+Redis cache is now opt-in.
+
+Set:
+
+```text
+ENERGYTWIN_REDIS_URL=redis://localhost:6379/0
+ENERGYTWIN_REDIS_TTL_SECONDS=60
+```
 
 Redis becomes useful when:
 
@@ -237,6 +255,8 @@ forecast:{building_id}:{model_version}:{source}:{scenario}:{horizon}
 simulate:{building_id}:{forecast_hash}:{controller}
 optimize:{building_id}:{forecast_hash}:{policy_version}
 ```
+
+Current cache keys are whole-response API keys for forecast, simulate, optimize, model status, forecast evaluation, and data health.
 
 ## 9. Streaming Design
 
@@ -314,7 +334,7 @@ flowchart LR
     L --> P[Dashboard MLOps panel]
 ```
 
-The scheduler can retrain local artifacts such as `trained-regression-v1` with `--train-model`. Promotion compares the candidate against `weighted-baseline-v1`; the active artifact is overwritten only when the candidate clears the MAE improvement threshold.
+The scheduler can retrain local artifacts such as `trained-regression-v1` and `trained-mlp-v1` with `--train-model`. Promotion compares the candidate against `weighted-baseline-v1`; the active artifact is overwritten only when the candidate clears the MAE improvement threshold.
 
 The monitoring summary is intentionally small: latest MAE, previous-vs-latest delta, best historical run, promotion counts, and a trend label. This is enough for daily local operation without adding Evidently yet.
 
@@ -339,6 +359,7 @@ Current model:
 - measured weighted baseline
 - trainable hourly artifact
 - trainable regression artifact
+- trainable local MLP artifact
 - 24-hour forecast
 - demand and solar outputs
 - uncertainty bands
@@ -356,9 +377,10 @@ Future options:
 Recommended path:
 
 1. keep `trained-regression-v1` as the current local benchmark
-2. add N-HiTS or PatchTST
-3. add TFT once data/features are mature
-4. add MLflow registry once multiple serious model families exist
+2. use `trained-mlp-v1` as the first dependency-free deep-learning model
+3. add N-HiTS or PatchTST once public data is stable
+4. add TFT once data/features are mature
+5. add MLflow registry once multiple serious model families exist
 
 ## 12. Simulator Design
 

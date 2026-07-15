@@ -58,7 +58,7 @@ def main() -> int:
         return 1
 
     print(json.dumps(summary, indent=2, sort_keys=True))
-    print("Next: run scripts/run_local_pipeline.py --source imported --scenario price --model trained-regression-v1 --train-model")
+    print("Next: run scripts/run_local_pipeline.py --source imported --scenario price --model trained-mlp-v1 --train-model")
     return 0
 
 

@@ -7,10 +7,13 @@ from .data import PROFILE, get_scenario, price, solar_shape, weather_temp
 from .domain import ForecastMetrics, ForecastPoint, Scenario
 from .model_artifacts import (
     TRAINED_HOURLY_MODEL,
+    TRAINED_MLP_MODEL,
     TRAINED_REGRESSION_MODEL,
     forecast_model_summary,
     is_trainable_model,
     load_forecast_model,
+    predict_mlp_demand,
+    predict_mlp_solar,
     predict_regression_demand,
     predict_regression_solar,
     train_forecast_model_artifact,
@@ -21,6 +24,7 @@ MODEL_SEASONAL = "seasonal"
 MODEL_WEIGHTED = "weighted-baseline-v1"
 MODEL_TRAINED_HOURLY = TRAINED_HOURLY_MODEL
 MODEL_TRAINED_REGRESSION = TRAINED_REGRESSION_MODEL
+MODEL_TRAINED_MLP = TRAINED_MLP_MODEL
 
 
 def _hourly_average(history: list[dict], field: str, hour: int) -> float:
@@ -84,6 +88,7 @@ def evaluate_forecast_baseline(
     model_name: str = MODEL_WEIGHTED,
     horizon_hours: int = 24,
     min_train_hours: int = 72,
+    max_evaluation_points: int | None = None,
 ) -> ForecastMetrics:
     errors: list[float] = []
     squared_errors: list[float] = []
@@ -94,7 +99,12 @@ def evaluate_forecast_baseline(
     if len(history) <= min_train_hours:
         return ForecastMetrics(model_name, horizon_hours, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
-    for index in range(min_train_hours, len(history)):
+    indices = _evaluation_indices(min_train_hours, len(history), max_evaluation_points or _default_evaluation_limit(model_name))
+    if not indices:
+        return ForecastMetrics(model_name, horizon_hours, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    if model_name == MODEL_TRAINED_MLP and len(history) > 1000:
+        return _evaluate_holdout(history, model_name, min(len(indices), horizon_hours), min_train_hours)
+    for index in indices:
         train = history[:index]
         actual = float(history[index]["demand_kw"])
         artifact = train_forecast_model_artifact(train, model_name) if is_trainable_model(model_name) else None
@@ -126,12 +136,72 @@ def evaluate_forecast_baseline(
     )
 
 
+def _evaluate_holdout(
+    history: list[dict],
+    model_name: str,
+    horizon_hours: int,
+    min_train_hours: int,
+) -> ForecastMetrics:
+    if len(history) <= min_train_hours + horizon_hours:
+        return ForecastMetrics(model_name, horizon_hours, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    train = history[:-horizon_hours]
+    actual_rows = history[-horizon_hours:]
+    artifact = train_forecast_model_artifact(train, model_name) if is_trainable_model(model_name) else None
+    predictions = build_forecast(train, horizon_hours=horizon_hours, model_name=model_name, model_artifact=artifact)
+    errors: list[float] = []
+    squared_errors: list[float] = []
+    smape_terms: list[float] = []
+    covered = 0
+    for prediction, actual_row in zip(predictions, actual_rows):
+        actual = float(actual_row["demand_kw"])
+        error = prediction.demand_kw - actual
+        errors.append(error)
+        squared_errors.append(error * error)
+        denominator = (abs(prediction.demand_kw) + abs(actual)) / 2
+        if denominator:
+            smape_terms.append(abs(error) / denominator)
+        if prediction.demand_p10_kw <= actual <= prediction.demand_p90_kw:
+            covered += 1
+
+    evaluated = len(errors)
+    mae = sum(abs(error) for error in errors) / evaluated
+    rmse = math.sqrt(sum(squared_errors) / evaluated)
+    bias = sum(errors) / evaluated
+    smape = sum(smape_terms) / len(smape_terms) if smape_terms else 0.0
+    return ForecastMetrics(
+        model_name=model_name,
+        horizon_hours=horizon_hours,
+        evaluated_points=evaluated,
+        mae_kw=round(mae, 2),
+        rmse_kw=round(rmse, 2),
+        smape=round(smape, 4),
+        bias_kw=round(bias, 2),
+        coverage_p10_p90=round(covered / evaluated, 4),
+    )
+
+
+def _default_evaluation_limit(model_name: str) -> int | None:
+    if model_name == MODEL_TRAINED_MLP:
+        return 24
+    return None
+
+
+def _evaluation_indices(min_train_hours: int, history_length: int, max_points: int | None) -> list[int]:
+    indices = list(range(min_train_hours, history_length))
+    if max_points is None or len(indices) <= max_points:
+        return indices
+    if max_points <= 0:
+        return []
+    step = (len(indices) - 1) / (max_points - 1) if max_points > 1 else len(indices)
+    return [indices[round(position * step)] for position in range(max_points)]
+
+
 def model_status(history_rows: int, metrics: ForecastMetrics | None = None) -> dict[str, object]:
     metrics = metrics or ForecastMetrics(MODEL_WEIGHTED, 24, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
     return {
         "active_model": metrics.model_name,
         "target_model": "Temporal Fusion Transformer",
-        "stage": "Measured baseline, regression artifact, TFT-ready contract",
+        "stage": "Measured baseline, regression artifact, local MLP, TFT-ready contract",
         "forecast_horizon_hours": 24,
         "training_rows": history_rows,
         "evaluated_points": metrics.evaluated_points,
@@ -171,6 +241,10 @@ def _predict_demand(
         scenario_solar = PROFILE.solar_kwp * solar_shape(hour) if scenario_solar_kw is None else scenario_solar_kw
         return predict_regression_demand(model_artifact, hour, forecast_temp, scenario_solar)
 
+    if model_name == MODEL_TRAINED_MLP and model_artifact is not None:
+        scenario_solar = PROFILE.solar_kwp * solar_shape(hour) if scenario_solar_kw is None else scenario_solar_kw
+        return predict_mlp_demand(model_artifact, hour, forecast_temp, scenario_solar)
+
     if model_name == MODEL_TRAINED_HOURLY and model_artifact is not None:
         hourly = model_artifact.get("hourly", {}).get(str(hour), {})
         global_stats = model_artifact.get("global", {})
@@ -207,6 +281,8 @@ def _predict_solar(
         return scenario_solar
     if model_name == MODEL_TRAINED_REGRESSION and model_artifact is not None:
         return predict_regression_solar(model_artifact, hour, scenario_solar)
+    if model_name == MODEL_TRAINED_MLP and model_artifact is not None:
+        return predict_mlp_solar(model_artifact, hour, scenario_solar)
     if model_name == MODEL_TRAINED_HOURLY and model_artifact is not None:
         hourly = model_artifact.get("hourly", {}).get(str(hour), {})
         historical = float(hourly.get("solar_kw", scenario_solar))
@@ -233,6 +309,6 @@ def _temperature_sensitivity(history: list[dict]) -> float:
 def _scenario_demand_adjustment(model_name: str, cooling_delta: float) -> float:
     if model_name == MODEL_SEASONAL:
         return cooling_delta
-    if model_name in {MODEL_TRAINED_HOURLY, MODEL_TRAINED_REGRESSION}:
+    if model_name in {MODEL_TRAINED_HOURLY, MODEL_TRAINED_REGRESSION, MODEL_TRAINED_MLP}:
         return 0.0
     return cooling_delta * 0.35

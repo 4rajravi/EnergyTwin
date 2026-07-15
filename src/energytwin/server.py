@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .cache import api_cache_key, cache_get_json, cache_set_json, cache_status
 from .data import available_scenarios, get_scenario
 from .domain import BatterySpec, TariffSpec, serialize
 from .forecasting import MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline, model_status
@@ -14,6 +15,7 @@ from .mlops import list_local_runs, local_monitoring_summary, read_latest_local_
 from .model_artifacts import forecast_model_summary
 from .simulator import compare_policies, simulate
 from .sources import available_data_sources, current_data_health, load_history
+from .storage import active_storage_backend
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "static"
@@ -42,13 +44,19 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         return
 
     def _handle_api(self, path: str, query: dict[str, list[str]]) -> None:
+        cache_key = api_cache_key(path, query)
+        cached_payload = cache_get_json(cache_key)
+        if cached_payload is not None:
+            self._json(cached_payload, cache_status="HIT")
+            return
+
         scenario_key = query.get("scenario", ["normal"])[0]
         controller = query.get("controller", ["baseline"])[0]
         source_key = query.get("source", ["demo"])[0]
-        model_name = query.get("model", [_default_model_name()])[0]
         battery, tariff = _economics_from_query(query)
         scenario = get_scenario(scenario_key, _scenario_overrides_from_query(query))
         history, source_label = load_history(source_key=source_key, scenario_key=scenario_key, scenario=scenario)
+        model_name = query.get("model", [_default_model_name(len(history))])[0]
         forecast = build_forecast(history, scenario_key=scenario_key, scenario=scenario, model_name=model_name)
 
         if path == "/api/scenarios":
@@ -91,6 +99,11 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
             payload = {"runs": list_local_runs(limit=_int_query(query, "limit", 20, 1, 100))}
         elif path == "/api/mlops-monitoring":
             payload = local_monitoring_summary(limit=_int_query(query, "limit", 20, 1, 100))
+        elif path == "/api/system-status":
+            payload = {
+                "storage": active_storage_backend(),
+                "cache": cache_status(),
+            }
         elif path == "/api/forecast-evaluation":
             payload = serialize(evaluate_forecast_baseline(history, model_name=model_name))
         elif path == "/api/data-health":
@@ -99,7 +112,8 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, status=404)
             return
 
-        self._json(payload)
+        cache_set_json(cache_key, payload)
+        self._json(payload, cache_status="MISS" if cache_key else None)
 
     def _serve_static(self, path: str, send_body: bool = True) -> None:
         target = STATIC_DIR / "index.html" if path in ("", "/") else STATIC_DIR / path.lstrip("/")
@@ -118,16 +132,19 @@ class EnergyTwinHandler(BaseHTTPRequestHandler):
         mime = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         self.send_response(200)
         self.send_header("Content-Type", mime)
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if send_body:
             self.wfile.write(body)
 
-    def _json(self, payload: object, status: int = 200) -> None:
+    def _json(self, payload: object, status: int = 200, cache_status: str | None = None) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
+        if cache_status:
+            self.send_header("X-EnergyTwin-Cache", cache_status)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -200,9 +217,16 @@ def _int_query(query: dict[str, list[str]], key: str, default: int, minimum: int
     return max(minimum, min(maximum, value))
 
 
-def _default_model_name() -> str:
+def _default_model_name(history_rows: int) -> str:
     artifact = forecast_model_summary()
-    return str(artifact.get("model_name") or MODEL_WEIGHTED) if artifact.get("available") else MODEL_WEIGHTED
+    if not artifact.get("available"):
+        return MODEL_WEIGHTED
+    artifact_rows = artifact.get("training_rows")
+    if not isinstance(artifact_rows, int):
+        return MODEL_WEIGHTED
+    if abs(artifact_rows - history_rows) > max(24, int(history_rows * 0.10)):
+        return MODEL_WEIGHTED
+    return str(artifact.get("model_name") or MODEL_WEIGHTED)
 
 
 def main() -> None:

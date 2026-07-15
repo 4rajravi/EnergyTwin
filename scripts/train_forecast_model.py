@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from energytwin.forecasting import MODEL_TRAINED_REGRESSION, MODEL_WEIGHTED, evaluate_forecast_baseline  # noqa: E402
+from energytwin.forecasting import MODEL_TRAINED_MLP, MODEL_TRAINED_REGRESSION, MODEL_WEIGHTED, evaluate_forecast_baseline  # noqa: E402
 from energytwin.model_artifacts import (  # noqa: E402
     DEFAULT_CANDIDATE_FORECAST_MODEL_PATH,
     DEFAULT_FORECAST_MODEL_PATH,
@@ -39,8 +39,9 @@ def main() -> int:
         raise SystemExit(f"model is not trainable: {args.model}")
     artifact = train_forecast_model_artifact(history, args.model)
     candidate_target = save_forecast_model(artifact, args.candidate_output)
-    candidate_metrics = evaluate_forecast_baseline(history, model_name=args.model)
-    reference_metrics = evaluate_forecast_baseline(history, model_name=MODEL_WEIGHTED)
+    max_evaluation_points = _evaluation_limit(args.model)
+    candidate_metrics = evaluate_forecast_baseline(history, model_name=args.model, max_evaluation_points=max_evaluation_points)
+    reference_metrics = evaluate_forecast_baseline(history, model_name=MODEL_WEIGHTED, max_evaluation_points=max_evaluation_points)
     promotion = decide_model_promotion(
         candidate_metrics,
         reference_metrics,
@@ -68,6 +69,12 @@ def main() -> int:
         )
     )
     return 0
+
+
+def _evaluation_limit(model_name: str) -> int | None:
+    if model_name == MODEL_TRAINED_MLP:
+        return 24
+    return None
 
 
 if __name__ == "__main__":

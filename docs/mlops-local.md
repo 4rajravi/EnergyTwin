@@ -52,6 +52,16 @@ python3 scripts/run_local_pipeline.py \
   --train-model
 ```
 
+Run the same loop with the local neural network model:
+
+```bash
+python3 scripts/run_local_pipeline.py \
+  --source demo \
+  --scenario price \
+  --model trained-mlp-v1 \
+  --train-model
+```
+
 The run report includes:
 
 - source and scenario
@@ -152,9 +162,11 @@ Then load it with the command printed by the script. The generated job runs `scr
 
 SQLite is the smallest useful persistence layer for run history. JSON files remain easy to inspect, while SQLite lets the API list, sort, and summarize past runs. This is a stepping stone toward Postgres/TimescaleDB, not a separate product direction.
 
-## Why This Model First
+## Forecast Models
 
 `trained-regression-v1` is the current strongest local model. It learns a small regression over hour, temperature, cooling load, solar, and peak-shape features. It is not deep learning, but it gives the project a real train/save/load/promote path and creates a stronger benchmark for N-HiTS, PatchTST, TFT, or MLflow model registry.
+
+`trained-mlp-v1` is an actual small neural network trained with backpropagation. It uses the same feature family as the regression model, two hidden layers, and a local JSON artifact. It is intentionally dependency-free so the project can train today without installing PyTorch. Later, this slot can be replaced by N-HiTS, PatchTST, or TFT once the real dataset is stable.
 
 ## Why This Exists Before MLflow
 

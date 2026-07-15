@@ -19,7 +19,7 @@
   <nav class="tabs" aria-label="Dashboard sections">
     <button class="tab active" data-tab="live">Live Twin</button>
     <button class="tab" data-tab="forecast">Forecast</button>
-    <button class="tab" data-tab="scenario">Scenario Lab</button>
+    <button class="tab" data-tab="scenarioLab">Scenario Lab</button>
     <button class="tab" data-tab="mlops">MLOps</button>
   </nav>
 
@@ -46,7 +46,8 @@
       </div>
     </section>
 
-    <section id="scenario" class="panel">
+    <section id="scenarioLab" class="panel">
+      <div class="metric-grid" id="scenarioMetrics"></div>
       <div class="scenario-controls" aria-label="Scenario assumptions">
         <label for="tempDelta">Temp delta C
           <input id="tempDelta" type="number" min="-20" max="20" step="0.5" value="0">
@@ -94,7 +95,6 @@
 
     <section id="mlops" class="panel">
       <div class="metric-grid" id="modelMetrics"></div>
-      <div class="metric-grid" id="runMetrics"></div>
       <div class="metric-grid" id="monitoringMetrics"></div>
       <div class="chart-band">
         <div class="section-head">
@@ -105,27 +105,16 @@
       </div>
       <div class="ops-layout">
         <article>
-          <h2>Pipeline</h2>
-          <ol class="pipeline">
-            <li><span>Ingest</span><strong>demo profile</strong></li>
-            <li><span>Features</span><strong>calendar, weather, price, carbon</strong></li>
-            <li><span>Train</span><strong>TFT target</strong></li>
-            <li><span>Promote</span><strong>local gate</strong></li>
-            <li><span>Monitor</span><strong>SQLite trend</strong></li>
-          </ol>
-        </article>
-        <article>
-          <h2>Run History</h2>
+          <h2>Recent Runs</h2>
           <ul class="run-history" id="runHistory"></ul>
         </article>
         <article>
-          <h2>Data Plane</h2>
+          <h2>Pipeline Status</h2>
           <ul class="data-plane">
-            <li><strong>Now</strong><span>Local JSON APIs and deterministic demo data</span></li>
-            <li><strong>Runs</strong><span>SQLite stores local experiment history</span></li>
-            <li><strong>DB</strong><span>Postgres or TimescaleDB for meter history and forecasts</span></li>
-            <li><strong>Cache</strong><span>Redis for repeated forecast and scenario responses</span></li>
-            <li><strong>Stream</strong><span>Kafka plus Flink only after live telemetry scale requires it</span></li>
+            <li><span>Data</span><strong id="pipelineData">-</strong></li>
+            <li><span>Train</span><strong>local regression</strong></li>
+            <li><span>Promote</span><strong>metric gate</strong></li>
+            <li><span>Store</span><strong>SQLite history</strong></li>
           </ul>
         </article>
       </div>

@@ -59,7 +59,8 @@ def nasa_power_json_to_enrichment_rows(
         if key in temp:
             row["outside_temp_c"] = round(float(temp[key]), 3)
         if key in irradiance:
-            row["solar_kw"] = round(max(0.0, float(irradiance[key])) * solar_kwp * performance_ratio, 3)
+            irradiance_kw_per_m2 = max(0.0, float(irradiance[key])) / 1000
+            row["solar_kw"] = round(irradiance_kw_per_m2 * solar_kwp * performance_ratio, 3)
         rows.append(row)
 
     if not rows:

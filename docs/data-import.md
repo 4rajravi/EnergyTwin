@@ -41,6 +41,19 @@ After import, restart the dashboard and choose `Imported CSV` from the data-sour
 
 ## Public Data
 
-You do not need to download public data yet.
+The default real-data path is now hard-coded:
 
-When we are ready, the next public-data step is to adapt Building Data Genome meter readings into this schema, then enrich the rows with NASA POWER weather and solar variables.
+```bash
+python3 scripts/prepare_default_real_data.py
+```
+
+That command fetches NASA POWER enrichment if needed and writes `data/processed/current-meter.csv`.
+The hard-coded Building Data Genome 2 profile expects:
+
+```text
+data/raw/buildingdatagenomeproject2/electricity_cleaned.csv
+data/raw/buildingdatagenomeproject2/metadata.csv
+data/raw/buildingdatagenomeproject2/weather.csv
+```
+
+It selects `Hog_office_Betsy`, an office building with complete 2016-2017 electricity data and metadata coordinates for NASA POWER.

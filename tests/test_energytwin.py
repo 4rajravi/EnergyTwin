@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import os
+import re
 import sys
 import unittest
+import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,11 +15,20 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from energytwin.data import generate_history, get_scenario
 from energytwin.adapters.building_data_genome import convert_bdg_long_csv, convert_bdg_wide_csv
+from energytwin.adapters.building_data_genome2 import BuildingDataGenome2Config, prepare_building_data_genome2
 from energytwin.adapters.nasa_power import NasaPowerRequest, build_nasa_power_url, nasa_power_json_to_enrichment_rows, write_enrichment_csv
 from energytwin.automation import LaunchdJobConfig, build_launchd_plist, write_launchd_plist
+from energytwin.cache import api_cache_key, cache_status
 from energytwin.domain import BatterySpec, TariffSpec
+from energytwin.downloads import DownloadConfig, download_public_dataset
 from energytwin.enrichment import enrich_rows_from_csv
-from energytwin.forecasting import MODEL_TRAINED_HOURLY, MODEL_TRAINED_REGRESSION, build_forecast, evaluate_forecast_baseline
+from energytwin.forecasting import (
+    MODEL_TRAINED_HOURLY,
+    MODEL_TRAINED_MLP,
+    MODEL_TRAINED_REGRESSION,
+    build_forecast,
+    evaluate_forecast_baseline,
+)
 from energytwin.ingestion import DataValidationError, data_health, load_meter_csv, validate_rows, write_demo_csv
 from energytwin.mlops import LocalRunConfig, local_monitoring_summary, read_latest_local_run, run_local_experiment
 from energytwin.model_artifacts import (
@@ -23,13 +37,16 @@ from energytwin.model_artifacts import (
     load_forecast_model,
     save_forecast_model,
     train_hourly_forecast_model,
+    train_mlp_forecast_model,
     train_regression_forecast_model,
 )
 from energytwin.public_pipeline import PublicDatasetConfig, prepare_public_dataset
+from energytwin.production_db import RUNS_INDEX_SQL, RUNS_TABLE_SQL
+from energytwin.real_data_defaults import DEFAULT_REAL_DATA_CONFIG
 from energytwin.scheduler import LocalScheduleConfig, run_local_schedule
 from energytwin.simulator import compare_policies, schedule_for, simulate
 from energytwin.sources import load_history
-from energytwin.storage import latest_run_report, list_run_summaries, save_run_report
+from energytwin.storage import active_storage_backend, latest_run_report, list_run_summaries, save_run_report
 
 
 class EnergyTwinTests(unittest.TestCase):
@@ -39,6 +56,38 @@ class EnergyTwinTests(unittest.TestCase):
         self.assertEqual(len(forecast), 24)
         self.assertTrue(all(point.demand_p10_kw <= point.demand_kw <= point.demand_p90_kw for point in forecast))
         self.assertTrue(all(point.solar_p10_kw <= point.solar_kw <= point.solar_p90_kw for point in forecast))
+
+    def test_dashboard_static_html_has_unique_ids(self) -> None:
+        html = (ROOT / "src" / "energytwin" / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        ids = re.findall(r'\bid="([^"]+)"', html)
+        duplicates = sorted({value for value in ids if ids.count(value) > 1})
+        self.assertEqual(duplicates, [])
+
+    def test_redis_cache_key_is_stable_and_opt_in(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(api_cache_key("/api/forecast", {"b": ["2"], "a": ["1"]}))
+
+        with patch.dict(os.environ, {"ENERGYTWIN_REDIS_URL": "redis://localhost:6379/0"}, clear=True):
+            first = api_cache_key("/api/forecast", {"b": ["2"], "a": ["1"]})
+            second = api_cache_key("/api/forecast", {"a": ["1"], "b": ["2"]})
+            self.assertEqual(first, second)
+            self.assertIn("/api/forecast?a=1&b=2", first)
+            self.assertIsNone(api_cache_key("/api/mlops-run", {}))
+            self.assertTrue(cache_status()["enabled"])
+
+    def test_production_db_schema_targets_postgres_jsonb(self) -> None:
+        self.assertIn("CREATE TABLE IF NOT EXISTS runs", RUNS_TABLE_SQL)
+        self.assertIn("payload_json JSONB NOT NULL", RUNS_TABLE_SQL)
+        self.assertIn("CREATE INDEX IF NOT EXISTS runs_created_at_idx", RUNS_INDEX_SQL)
+
+    def test_active_storage_backend_switches_with_database_url(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(active_storage_backend()["backend"], "sqlite")
+
+        with patch.dict(os.environ, {"ENERGYTWIN_DATABASE_URL": "postgresql://user:secret@localhost:5432/energytwin"}, clear=True):
+            backend = active_storage_backend()
+            self.assertEqual(backend["backend"], "postgres")
+            self.assertEqual(backend["target"], "postgresql://***@localhost:5432/energytwin")
 
     def test_forecast_baseline_evaluation_reports_metrics(self) -> None:
         metrics = evaluate_forecast_baseline(generate_history())
@@ -86,6 +135,22 @@ class EnergyTwinTests(unittest.TestCase):
             self.assertEqual(loaded["training_rows"], len(history))
             self.assertEqual(loaded["model_name"], MODEL_TRAINED_REGRESSION)
             self.assertGreater(metrics.evaluated_points, 0)
+        finally:
+            target.unlink(missing_ok=True)
+
+    def test_trained_mlp_model_artifact_preserves_forecast_contract(self) -> None:
+        history = generate_history()
+        target = ROOT / "models" / "test-mlp-forecast-model.json"
+        try:
+            artifact = train_mlp_forecast_model(history)
+            save_forecast_model(artifact, target)
+            loaded = load_forecast_model(target)
+            self.assertIsNotNone(loaded)
+            forecast = build_forecast(history, model_name=MODEL_TRAINED_MLP, model_artifact=loaded)
+            self.assertEqual(len(forecast), 24)
+            self.assertEqual(loaded["model_name"], MODEL_TRAINED_MLP)
+            self.assertEqual(loaded["architecture"]["type"], "mlp")
+            self.assertTrue(all(point.demand_kw >= 0 for point in forecast))
         finally:
             target.unlink(missing_ok=True)
 
@@ -286,7 +351,7 @@ class EnergyTwinTests(unittest.TestCase):
         rows = nasa_power_json_to_enrichment_rows(payload, solar_kwp=100.0, performance_ratio=0.8)
         self.assertEqual(rows[0]["timestamp"], "2026-07-01T00:00:00")
         self.assertEqual(rows[0]["outside_temp_c"], 18.4)
-        self.assertEqual(rows[1]["solar_kw"], 4.0)
+        self.assertEqual(rows[1]["solar_kw"], 0.004)
 
     def test_nasa_power_enrichment_csv_roundtrip(self) -> None:
         target = ROOT / "data" / "processed" / "test-nasa-enrichment.csv"
@@ -340,6 +405,105 @@ class EnergyTwinTests(unittest.TestCase):
             source.unlink(missing_ok=True)
             enrichment.unlink(missing_ok=True)
             output.unlink(missing_ok=True)
+
+    def test_building_data_genome2_adapter_uses_metadata_weather_and_nasa(self) -> None:
+        root = ROOT / "data" / "processed" / "test-bdg2"
+        output = ROOT / "data" / "processed" / "test-bdg2-current-meter.csv"
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "metadata.csv").write_text(
+                "building_id,site_id,primaryspaceusage,lat,lng\n"
+                "Hog_office_Betsy,Hog,Office,44.97,-93.25\n",
+                encoding="utf-8",
+            )
+            (root / "electricity_cleaned.csv").write_text(
+                "timestamp,Hog_office_Betsy,Other\n"
+                "2016-01-01 00:00:00,100.0,1\n"
+                "2016-01-01 01:00:00,110.0,2\n",
+                encoding="utf-8",
+            )
+            (root / "weather.csv").write_text(
+                "timestamp,site_id,airTemperature\n"
+                "2016-01-01 00:00:00,Hog,-5.0\n"
+                "2016-01-01 01:00:00,Hog,-4.5\n"
+                "2016-01-01 00:00:00,Other,20.0\n",
+                encoding="utf-8",
+            )
+            (root / "solar_cleaned.csv").write_text("timestamp\n2016-01-01 00:00:00\n", encoding="utf-8")
+            nasa = root / "nasa.csv"
+            nasa.write_text(
+                "timestamp,outside_temp_c,solar_kw\n"
+                "2016-01-01T00:00:00,-6.0,12.0\n",
+                encoding="utf-8",
+            )
+            summary = prepare_building_data_genome2(
+                BuildingDataGenome2Config(root_path=root, building_id="Hog_office_Betsy", output_path=output, nasa_enrichment_csv=nasa)
+            )
+            rows = load_meter_csv(output)
+            self.assertEqual(summary["row_count"], 2)
+            self.assertEqual(rows[0]["demand_kw"], 100.0)
+            self.assertEqual(rows[0]["outside_temp_c"], -6.0)
+            self.assertEqual(rows[0]["solar_kw"], 12.0)
+            self.assertEqual(rows[1]["outside_temp_c"], -4.5)
+        finally:
+            output.unlink(missing_ok=True)
+            if root.exists():
+                for path in root.glob("*"):
+                    path.unlink(missing_ok=True)
+                root.rmdir()
+
+    def test_default_real_data_config_points_to_expected_local_files(self) -> None:
+        config = DEFAULT_REAL_DATA_CONFIG
+        self.assertEqual(config.dataset_root, ROOT / "data" / "raw" / "buildingdatagenomeproject2")
+        self.assertEqual(config.meter_input_path, ROOT / "data" / "raw" / "buildingdatagenomeproject2" / "electricity_cleaned.csv")
+        self.assertEqual(config.enrichment_csv, ROOT / "data" / "raw" / "nasa-power-enrichment.csv")
+        self.assertEqual(config.prepared_output_path, ROOT / "data" / "processed" / "current-meter.csv")
+        self.assertEqual(config.building_column, "Hog_office_Betsy")
+
+    def test_download_public_dataset_copies_file_url_with_sha(self) -> None:
+        source = ROOT / "data" / "processed" / "test-download-source.csv"
+        output = ROOT / "data" / "processed" / "test-download-output.csv"
+        try:
+            payload = b"timestamp,building_a\n2026-07-07T00:00:00,120.5\n"
+            source.write_bytes(payload)
+            summary = download_public_dataset(
+                DownloadConfig(
+                    url=source.resolve().as_uri(),
+                    output_path=output,
+                    sha256=hashlib.sha256(payload).hexdigest(),
+                    max_bytes=1024,
+                )
+            )
+            self.assertEqual(output.read_bytes(), payload)
+            self.assertEqual(summary["bytes"], len(payload))
+            self.assertFalse(summary["extracted"])
+        finally:
+            source.unlink(missing_ok=True)
+            output.unlink(missing_ok=True)
+
+    def test_download_public_dataset_extracts_zip_member(self) -> None:
+        archive = ROOT / "data" / "processed" / "test-download-source.zip"
+        output = ROOT / "data" / "processed" / "test-download-output.csv"
+        downloaded_archive = ROOT / "data" / "processed" / "test-download-output.csv.zip"
+        try:
+            with zipfile.ZipFile(archive, "w") as zipped:
+                zipped.writestr("meters/building.csv", "timestamp,building_a\n2026-07-07T00:00:00,120.5\n")
+            summary = download_public_dataset(
+                DownloadConfig(
+                    url=archive.resolve().as_uri(),
+                    output_path=output,
+                    max_bytes=4096,
+                    extract_zip=True,
+                    extract_member="meters/building.csv",
+                )
+            )
+            self.assertIn(b"building_a", output.read_bytes())
+            self.assertTrue(summary["extracted"])
+            self.assertEqual(summary["extract_member"], "meters/building.csv")
+        finally:
+            archive.unlink(missing_ok=True)
+            output.unlink(missing_ok=True)
+            downloaded_archive.unlink(missing_ok=True)
 
     def test_local_mlops_run_writes_report(self) -> None:
         output_dir = ROOT / "mlruns" / "test-local"

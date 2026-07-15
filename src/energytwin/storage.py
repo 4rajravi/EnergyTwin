@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -9,9 +10,17 @@ from .sources import PROJECT_ROOT
 
 
 LOCAL_DB_PATH = PROJECT_ROOT / "data" / "local" / "energytwin.sqlite3"
+DATABASE_URL_ENV = "ENERGYTWIN_DATABASE_URL"
 
 
 def init_db(db_path: Path | str = LOCAL_DB_PATH) -> Path:
+    database_url = _production_database_url(db_path)
+    if database_url:
+        from .production_db import init_postgres
+
+        init_postgres(database_url)
+        return Path("postgres")
+
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as connection:
@@ -37,6 +46,13 @@ def init_db(db_path: Path | str = LOCAL_DB_PATH) -> Path:
 
 
 def save_run_report(report: dict[str, Any], db_path: Path | str = LOCAL_DB_PATH) -> Path:
+    database_url = _production_database_url(db_path)
+    if database_url:
+        from .production_db import save_run_report_postgres
+
+        save_run_report_postgres(report, database_url)
+        return Path("postgres")
+
     path = init_db(db_path)
     config = report.get("config", {})
     forecast_metrics = report.get("forecast_metrics", {})
@@ -92,6 +108,12 @@ def save_run_report(report: dict[str, Any], db_path: Path | str = LOCAL_DB_PATH)
 
 
 def latest_run_report(db_path: Path | str = LOCAL_DB_PATH) -> dict[str, Any] | None:
+    database_url = _production_database_url(db_path)
+    if database_url:
+        from .production_db import latest_run_report_postgres
+
+        return latest_run_report_postgres(database_url)
+
     path = Path(db_path)
     if not path.exists():
         return None
@@ -105,6 +127,12 @@ def latest_run_report(db_path: Path | str = LOCAL_DB_PATH) -> dict[str, Any] | N
 
 
 def list_run_summaries(limit: int = 20, db_path: Path | str = LOCAL_DB_PATH) -> list[dict[str, Any]]:
+    database_url = _production_database_url(db_path)
+    if database_url:
+        from .production_db import list_run_summaries_postgres
+
+        return list_run_summaries_postgres(limit, database_url)
+
     path = Path(db_path)
     if not path.exists():
         return []
@@ -135,6 +163,12 @@ def list_run_summaries(limit: int = 20, db_path: Path | str = LOCAL_DB_PATH) -> 
 
 
 def list_run_reports(limit: int = 20, db_path: Path | str = LOCAL_DB_PATH) -> list[dict[str, Any]]:
+    database_url = _production_database_url(db_path)
+    if database_url:
+        from .production_db import list_run_reports_postgres
+
+        return list_run_reports_postgres(limit, database_url)
+
     path = Path(db_path)
     if not path.exists():
         return []
@@ -150,3 +184,24 @@ def list_run_reports(limit: int = 20, db_path: Path | str = LOCAL_DB_PATH) -> li
             (bounded_limit,),
         ).fetchall()
     return [json.loads(row[0]) for row in rows]
+
+
+def active_storage_backend(db_path: Path | str = LOCAL_DB_PATH) -> dict[str, str]:
+    database_url = _production_database_url(db_path)
+    if database_url:
+        return {"backend": "postgres", "target": _redacted_database_url(database_url)}
+    return {"backend": "sqlite", "target": str(db_path)}
+
+
+def _production_database_url(db_path: Path | str) -> str | None:
+    if str(db_path) != str(LOCAL_DB_PATH):
+        return None
+    return os.getenv(DATABASE_URL_ENV)
+
+
+def _redacted_database_url(url: str) -> str:
+    if "@" not in url or "://" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    host = rest.split("@", 1)[1]
+    return f"{scheme}://***@{host}"

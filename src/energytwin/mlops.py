@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .data import get_scenario
 from .domain import BatterySpec, TariffSpec, serialize
-from .forecasting import MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline
+from .forecasting import MODEL_TRAINED_MLP, MODEL_WEIGHTED, build_forecast, evaluate_forecast_baseline
 from .ingestion import data_health
 from .model_artifacts import (
     DEFAULT_CANDIDATE_FORECAST_MODEL_PATH,
@@ -54,13 +54,22 @@ def run_local_experiment(
     candidate_metrics = None
     reference_metrics = None
     promotion = None
+    max_evaluation_points = _evaluation_limit(config.model_name)
     if config.train_model:
         if not is_trainable_model(config.model_name):
             raise ValueError(f"model is not trainable: {config.model_name}")
         trained_artifact = train_forecast_model_artifact(history, config.model_name)
         candidate_model_path = save_forecast_model(trained_artifact, config.candidate_model_path)
-        candidate_metrics = evaluate_forecast_baseline(history, model_name=config.model_name)
-        reference_metrics = evaluate_forecast_baseline(history, model_name=MODEL_WEIGHTED)
+        candidate_metrics = evaluate_forecast_baseline(
+            history,
+            model_name=config.model_name,
+            max_evaluation_points=max_evaluation_points,
+        )
+        reference_metrics = evaluate_forecast_baseline(
+            history,
+            model_name=MODEL_WEIGHTED,
+            max_evaluation_points=max_evaluation_points,
+        )
         promotion = decide_model_promotion(
             candidate_metrics,
             reference_metrics,
@@ -84,7 +93,11 @@ def run_local_experiment(
         demand_charge_usd_per_kw_day=config.demand_charge_usd_per_kw_day,
         export_credit_fraction=config.export_credit_fraction,
     )
-    forecast_metrics = evaluate_forecast_baseline(history, model_name=config.model_name)
+    forecast_metrics = evaluate_forecast_baseline(
+        history,
+        model_name=config.model_name,
+        max_evaluation_points=max_evaluation_points,
+    )
     policy_comparison = compare_policies(forecast, battery=battery, tariff=tariff)
     health = data_health(history, source=source_label)
 
@@ -186,6 +199,12 @@ def local_monitoring_summary(limit: int = 20, db_path: Path | str = LOCAL_DB_PAT
 def _run_id(config: LocalRunConfig) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     return f"{stamp}-{config.source_key}-{config.scenario_key}-{config.model_name}"
+
+
+def _evaluation_limit(model_name: str) -> int | None:
+    if model_name == MODEL_TRAINED_MLP:
+        return 24
+    return None
 
 
 def _trend_point(report: dict) -> dict:
