@@ -120,6 +120,7 @@ sequenceDiagram
 | Source selector | `src/energytwin/sources.py` | chooses demo data or imported CSV |
 | Public-data adapters | `src/energytwin/adapters` | converts external dataset shapes into the internal schema |
 | Enrichment | `src/energytwin/enrichment.py` | joins weather, solar, price, and carbon data by timestamp |
+| NASA POWER adapter | `src/energytwin/adapters/nasa_power.py` | converts hourly NASA POWER JSON into enrichment CSV rows |
 | Forecasting | `src/energytwin/forecasting.py` | returns a 24-hour forecast contract |
 | Simulator | `src/energytwin/simulator.py` | simulates grid import/export, battery, cost, carbon, comfort |
 | Optimizer | `src/energytwin/optimizer.py` | creates baseline, rule, and optimized schedules |

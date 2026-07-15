@@ -62,7 +62,7 @@ flowchart TD
 | 0. Local MVP skeleton | Done | Dashboard, APIs, forecast contract, simulator, optimizer, tests |
 | 1. Data import and validation | In progress | CSV import, schema validation, data-health UI |
 | 2. Real public meter data adapter | Adapter ready | Convert Building Data Genome-style meter data into our schema |
-| 3. Weather and solar enrichment | Manual join ready | Add weather/solar/price/carbon columns by timestamp |
+| 3. Weather and solar enrichment | NASA POWER adapter ready | Add weather/solar/price/carbon columns by timestamp |
 | 4. Forecasting upgrade | Baseline metrics ready | Replace seasonal baseline with stronger models |
 | 5. Simulator and optimizer upgrade | Configurable economics ready | More realistic battery, tariff, comfort, HVAC behavior |
 | 6. MLOps pipeline | Not started | MLflow, pipeline runs, evaluation, drift monitoring |
@@ -85,6 +85,7 @@ flowchart TD
 | Economic assumptions | hardcoded, API params, dashboard controls | dashboard controls | Lets users test policy sensitivity without code changes |
 | Scenario assumptions | fixed presets, API params, dashboard controls | dashboard controls | Lets users tune weather, price, EV, and comfort assumptions |
 | Optimizer economics | fixed schedule scoring, tariff-aware schedule | tariff-aware schedule | Policy actions now respond to tariff and wear assumptions |
+| Weather source | manual CSV only, NASA POWER adapter | NASA POWER adapter | Automates temperature and solar enrichment while preserving CSV join path |
 
 ## Next Step
 

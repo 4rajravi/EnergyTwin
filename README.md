@@ -35,6 +35,7 @@ python3 scripts/import_dataset.py data/raw/my-building.csv --output data/process
 See [docs/data-import.md](docs/data-import.md) for the required schema.
 See [docs/public-data.md](docs/public-data.md) for Building Data Genome-style adapter examples.
 See [docs/weather-enrichment.md](docs/weather-enrichment.md) for joining weather, solar, price, or carbon CSV data.
+See [docs/nasa-power.md](docs/nasa-power.md) for NASA POWER weather enrichment.
 
 ## Project Map
 
@@ -48,6 +49,7 @@ See [docs/system-design.md](docs/system-design.md) for component design, data fl
 - `src/energytwin/ingestion.py`: local CSV ingestion, schema checks, and data-health validation.
 - `src/energytwin/sources.py`: data-source selection between demo data and imported CSV.
 - `src/energytwin/enrichment.py`: timestamp-based joins for weather, solar, price, and carbon data.
+- `src/energytwin/adapters/nasa_power.py`: NASA POWER hourly weather-to-enrichment adapter.
 - `src/energytwin/forecasting.py`: 24-hour multi-output forecast contract with uncertainty bands.
 - `/api/forecast-evaluation`: local backtest metrics for the active baseline.
 - `src/energytwin/simulator.py`: battery, grid import/export, tariff cost breakdown, carbon, and comfort simulation.

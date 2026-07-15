@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from energytwin.data import generate_history, get_scenario
 from energytwin.adapters.building_data_genome import convert_bdg_long_csv, convert_bdg_wide_csv
+from energytwin.adapters.nasa_power import NasaPowerRequest, build_nasa_power_url, nasa_power_json_to_enrichment_rows, write_enrichment_csv
 from energytwin.domain import BatterySpec, TariffSpec
 from energytwin.enrichment import enrich_rows_from_csv
 from energytwin.forecasting import build_forecast, evaluate_forecast_baseline
@@ -204,6 +205,43 @@ class EnergyTwinTests(unittest.TestCase):
                 enrich_rows_from_csv(rows, enrichment, require_match=True)
         finally:
             enrichment.unlink(missing_ok=True)
+
+    def test_nasa_power_url_builder_targets_hourly_point_json(self) -> None:
+        url = build_nasa_power_url(NasaPowerRequest(latitude=40.0, longitude=-105.0, start="20260701", end="20260702"))
+        self.assertIn("/api/temporal/hourly/point", url)
+        self.assertIn("parameters=T2M%2CALLSKY_SFC_SW_DWN", url)
+        self.assertIn("format=JSON", url)
+        self.assertIn("time-standard=UTC", url)
+
+    def test_nasa_power_json_converts_to_enrichment_rows(self) -> None:
+        payload = {
+            "properties": {
+                "parameter": {
+                    "T2M": {"2026070100": 18.4, "2026070101": 18.1},
+                    "ALLSKY_SFC_SW_DWN": {"2026070100": 0.0, "2026070101": 0.05},
+                }
+            }
+        }
+        rows = nasa_power_json_to_enrichment_rows(payload, solar_kwp=100.0, performance_ratio=0.8)
+        self.assertEqual(rows[0]["timestamp"], "2026-07-01T00:00:00")
+        self.assertEqual(rows[0]["outside_temp_c"], 18.4)
+        self.assertEqual(rows[1]["solar_kw"], 4.0)
+
+    def test_nasa_power_enrichment_csv_roundtrip(self) -> None:
+        target = ROOT / "data" / "processed" / "test-nasa-enrichment.csv"
+        try:
+            rows = [
+                {"timestamp": "2026-07-01T00:00:00", "outside_temp_c": 18.4, "solar_kw": 0.0},
+                {"timestamp": "2026-07-01T01:00:00", "outside_temp_c": 18.1, "solar_kw": 4.0},
+            ]
+            write_enrichment_csv(target, rows)
+            meter_rows = generate_history(hours=2)
+            meter_rows[0]["timestamp"] = "2026-07-01T00:00:00"
+            meter_rows[1]["timestamp"] = "2026-07-01T01:00:00"
+            enriched = enrich_rows_from_csv(meter_rows, target, require_match=True)
+            self.assertEqual(enriched[1]["solar_kw"], 4.0)
+        finally:
+            target.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
